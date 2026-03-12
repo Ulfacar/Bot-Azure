@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+from app.core.rate_limit import RateLimitMiddleware
 from app.api.routes import api_router
 from app.bot.channels.telegram import start_bot, stop_bot
 from app.bot.channels.whatsapp import router as whatsapp_router
@@ -26,6 +27,8 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
+
+app.add_middleware(RateLimitMiddleware)
 
 app.include_router(api_router)
 app.include_router(whatsapp_router)  # WhatsApp webhook
