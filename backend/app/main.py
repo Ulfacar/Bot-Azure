@@ -36,6 +36,12 @@ async def root():
     return {"status": "ok", "app": settings.app_name}
 
 
+@app.get("/health")
+async def health():
+    """Health check для Railway / мониторинга."""
+    return {"status": "ok"}
+
+
 @app.get("/api/status")
 async def status():
     """Статус подключений (Telegram, WhatsApp)."""
