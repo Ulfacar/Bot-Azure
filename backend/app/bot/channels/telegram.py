@@ -7,6 +7,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from app.bot.ai.assistant import (
     bot_completed,
     clean_response,
+    extract_category,
     generate_response,
     needs_operator,
     format_knowledge_answer,
@@ -15,6 +16,7 @@ from app.core.config import settings
 from app.db.database import async_session
 from app.db.models.models import (
     ChannelType,
+    ConversationCategory,
     ConversationStatus,
     MessageSender,
     Conversation,
@@ -431,6 +433,14 @@ async def handle_client_message(message: types.Message, session):
         # Не нашли — спрашиваем Claude
         history = await get_conversation_history(session, conversation.id)
         response_text = await generate_response(history)
+
+        # Извлекаем категорию из первого ответа AI
+        category = extract_category(response_text)
+        if category and conversation.category == ConversationCategory.general:
+            try:
+                conversation.category = ConversationCategory(category)
+            except ValueError:
+                pass
 
         # Проверяем нужен ли менеджер
         need_operator = needs_operator(response_text)
