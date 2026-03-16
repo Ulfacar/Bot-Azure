@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select, update
@@ -10,6 +11,13 @@ from app.db.models.models import (
     ConversationStatus,
     Message,
     MessageSender,
+)
+
+# Паттерн для номеров телефонов Кыргызстана и международных
+_PHONE_RE = re.compile(
+    r"(?:\+?996|0)\s*\d{3}\s*\d{3}\s*\d{3}"  # KG: +996XXX или 0XXX
+    r"|"
+    r"\+?\d[\d\s\-]{8,14}\d"  # Международный формат
 )
 
 
@@ -100,6 +108,30 @@ async def save_message(
     return message
 
 
+async def extract_and_save_phone(
+    session: AsyncSession, client_id: int, text: str
+) -> str | None:
+    """Извлечь номер телефона из сообщения клиента и сохранить в БД.
+
+    Возвращает найденный номер или None.
+    """
+    match = _PHONE_RE.search(text)
+    if not match:
+        return None
+
+    phone = re.sub(r"[\s\-]", "", match.group())  # Убираем пробелы и дефисы
+
+    result = await session.execute(
+        select(Client).where(Client.id == client_id)
+    )
+    client = result.scalar_one_or_none()
+    if client and not client.phone:
+        client.phone = phone
+        await session.commit()
+
+    return phone
+
+
 async def get_conversation_history(
     session: AsyncSession, conversation_id: int, limit: int = 10
 ) -> list[Message]:
@@ -112,6 +144,43 @@ async def get_conversation_history(
     )
     messages = list(result.scalars().all())
     messages.reverse()  # Хронологический порядок
+    return messages
+
+
+async def get_client_previous_messages(
+    session: AsyncSession,
+    client_id: int,
+    current_conversation_id: int,
+    limit: int = 10,
+) -> list[Message]:
+    """Получить последние сообщения клиента из предыдущих диалогов.
+
+    Используется для кросс-диалоговой памяти — бот помнит контекст
+    из прошлых разговоров с тем же клиентом.
+    """
+    # Находим предыдущие диалоги этого клиента (кроме текущего)
+    conv_result = await session.execute(
+        select(Conversation.id)
+        .where(
+            Conversation.client_id == client_id,
+            Conversation.id != current_conversation_id,
+        )
+        .order_by(Conversation.updated_at.desc())
+        .limit(3)  # Берём максимум 3 последних диалога
+    )
+    prev_conv_ids = [row[0] for row in conv_result.all()]
+
+    if not prev_conv_ids:
+        return []
+
+    result = await session.execute(
+        select(Message)
+        .where(Message.conversation_id.in_(prev_conv_ids))
+        .order_by(Message.created_at.desc())
+        .limit(limit)
+    )
+    messages = list(result.scalars().all())
+    messages.reverse()
     return messages
 
 

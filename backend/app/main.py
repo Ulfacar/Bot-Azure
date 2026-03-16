@@ -70,7 +70,7 @@ async def auto_close_loop():
         await asyncio.sleep(300)  # 5 минут
         try:
             async with async_session() as session:
-                closed = await close_stale_conversations(session, timeout_hours=1)
+                closed = await close_stale_conversations(session, timeout_hours=3)
                 if closed:
                     logger.info(f"Автозакрытие: {closed} диалогов")
         except Exception as e:

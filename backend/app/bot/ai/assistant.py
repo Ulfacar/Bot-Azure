@@ -241,8 +241,15 @@ def get_ai_client() -> AsyncOpenAI | None:
     )
 
 
-async def generate_response(history: list[Message]) -> str:
-    """Сгенерировать ответ на основе истории диалога."""
+async def generate_response(
+    history: list[Message],
+    previous_context: list[Message] | None = None,
+) -> str:
+    """Сгенерировать ответ на основе истории диалога.
+
+    previous_context — сообщения из предыдущих диалогов этого клиента
+    для кросс-диалоговой памяти.
+    """
     client = get_ai_client()
 
     if not client:
@@ -253,6 +260,17 @@ async def generate_response(history: list[Message]) -> str:
         )
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+    # Добавляем контекст из предыдущих диалогов (кросс-диалоговая память)
+    if previous_context:
+        context_summary = "=== ПРЕДЫДУЩИЕ ДИАЛОГИ С ЭТИМ ГОСТЕМ ===\n"
+        for msg in previous_context:
+            role = "Гость" if msg.sender == MessageSender.client else "Консьерж"
+            context_summary += f"{role}: {msg.text}\n"
+        context_summary += "=== КОНЕЦ ПРЕДЫДУЩИХ ДИАЛОГОВ ===\n"
+        context_summary += "Используй эту информацию, если гость ссылается на предыдущий разговор. Не переспрашивай данные, которые гость уже сообщал ранее."
+        messages.append({"role": "system", "content": context_summary})
+
     for msg in history:
         if msg.sender == MessageSender.client:
             messages.append({"role": "user", "content": msg.text})

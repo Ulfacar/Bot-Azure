@@ -23,7 +23,9 @@ from app.db.models.models import (
 )
 from app.services.conversation import (
     create_conversation,
+    extract_and_save_phone,
     get_active_conversation,
+    get_client_previous_messages,
     get_conversation_history,
     get_or_create_client,
     save_message,
@@ -192,6 +194,9 @@ async def handle_whatsapp_message(
             session, conversation.id, MessageSender.client, message_text
         )
 
+        # 3.1. Извлечь и сохранить телефон, если есть
+        await extract_and_save_phone(session, client.id, message_text)
+
         # 4. Если диалог ведёт оператор — пересылаем ему сообщение
         if conversation.status == ConversationStatus.operator_active:
             if conversation.assigned_operator_id:
@@ -225,7 +230,10 @@ async def handle_whatsapp_message(
         else:
             # Спрашиваем AI
             history = await get_conversation_history(session, conversation.id)
-            response_text = await generate_response(history)
+            previous_context = await get_client_previous_messages(
+                session, client.id, conversation.id
+            )
+            response_text = await generate_response(history, previous_context)
 
             # Извлекаем категорию из первого ответа AI
             category = extract_category(response_text)
