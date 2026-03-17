@@ -19,16 +19,22 @@ settings.validate_for_startup()
 
 app = FastAPI(title=settings.app_name)
 
+# Rate limiter ПЕРЕД CORS, чтобы 429 тоже получал CORS хедеры
+# (middleware в FastAPI выполняются в обратном порядке добавления)
+app.add_middleware(RateLimitMiddleware)
+
 # Разрешаем запросы от фронтенда (админки)
+origins = [o.strip() for o in settings.cors_origins.split(",")]
+# Всегда разрешаем Vercel
+if "https://ton-azure-admin.vercel.app" not in origins:
+    origins.append("https://ton-azure-admin.vercel.app")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in settings.cors_origins.split(",")],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
-
-app.add_middleware(RateLimitMiddleware)
 
 app.include_router(api_router)
 app.include_router(whatsapp_router)  # WhatsApp webhook

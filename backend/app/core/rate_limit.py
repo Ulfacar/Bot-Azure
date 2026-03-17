@@ -13,7 +13,7 @@ from starlette.responses import JSONResponse
 _requests: dict[str, list[float]] = defaultdict(list)
 
 # Настройки
-RATE_LIMIT = 60  # запросов
+RATE_LIMIT = 200  # запросов
 RATE_WINDOW = 60  # секунд
 
 
