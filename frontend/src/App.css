@@ -294,9 +294,31 @@ body {
   margin-bottom: 8px;
 }
 
+.conv-top-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .conv-client {
   font-weight: 600;
   font-size: 15px;
+}
+
+.conv-channel {
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: white;
+}
+
+.conv-channel--wa {
+  background: #25d366;
+}
+
+.conv-channel--tg {
+  background: #2aabee;
 }
 
 .conv-status {

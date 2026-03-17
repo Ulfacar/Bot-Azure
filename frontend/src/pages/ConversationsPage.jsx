@@ -127,9 +127,14 @@ export default function ConversationsPage() {
               onClick={() => navigate(`/chat/${conv.id}`)}
             >
               <div className="conv-top">
-                <span className="conv-client">
-                  {conv.client?.name || conv.client?.username || `Клиент #${conv.client_id}`}
-                </span>
+                <div className="conv-top-left">
+                  <span className="conv-client">
+                    {conv.client?.name || conv.client?.username || `Клиент #${conv.client_id}`}
+                  </span>
+                  <span className={`conv-channel conv-channel--${conv.client?.channel === "whatsapp" ? "wa" : "tg"}`}>
+                    {conv.client?.channel === "whatsapp" ? "📱 WhatsApp" : "✈️ Telegram"}
+                  </span>
+                </div>
                 <span
                   className="conv-status"
                   style={{ background: STATUS_COLORS[conv.status] }}
@@ -140,9 +145,6 @@ export default function ConversationsPage() {
               <div className="conv-bottom">
                 <span className="conv-category">
                   {CATEGORY_LABELS[conv.category]}
-                </span>
-                <span className="conv-channel">
-                  {conv.client?.channel === "whatsapp" ? "📱 WhatsApp" : "✈️ Telegram"}
                 </span>
                 <span className="conv-date">
                   {new Date(conv.updated_at).toLocaleString("ru-RU")}
