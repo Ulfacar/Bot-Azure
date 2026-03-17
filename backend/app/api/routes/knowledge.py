@@ -78,6 +78,55 @@ async def get_knowledge_entries(
     return response
 
 
+class TrainRequest(BaseModel):
+    question: str
+    answer: str
+    conversation_id: int
+
+
+@router.get("/train/{conversation_id}")
+async def get_train_suggestion(
+    conversation_id: int,
+    session: AsyncSession = Depends(get_session),
+    current_operator: Operator = Depends(get_current_operator),
+):
+    """Получить последнюю пару вопрос-ответ из диалога для обучения."""
+    from app.services.knowledge import get_last_qa_pair
+
+    pair = await get_last_qa_pair(session, conversation_id)
+    if not pair:
+        raise HTTPException(status_code=404, detail="Не найдено пар вопрос-ответ в диалоге")
+    return {"question": pair[0], "answer": pair[1]}
+
+
+@router.post("/train", response_model=KnowledgeEntryOut)
+async def train_from_conversation(
+    data: TrainRequest,
+    session: AsyncSession = Depends(get_session),
+    current_operator: Operator = Depends(get_current_operator),
+):
+    """Сохранить пару вопрос-ответ из диалога в базу знаний."""
+    from app.services.knowledge import add_to_knowledge_base
+
+    entry = await add_to_knowledge_base(
+        session=session,
+        question=data.question,
+        answer=data.answer,
+        operator_id=current_operator.id,
+        conversation_id=data.conversation_id,
+    )
+    return KnowledgeEntryOut(
+        id=entry.id,
+        question=entry.question,
+        answer=entry.answer,
+        keywords=entry.keywords,
+        is_active=entry.is_active,
+        times_used=entry.times_used,
+        added_by_name=current_operator.name,
+        created_at=entry.created_at.isoformat() if entry.created_at else "",
+    )
+
+
 @router.post("", response_model=KnowledgeEntryOut)
 async def create_knowledge_entry(
     data: KnowledgeEntryCreate,

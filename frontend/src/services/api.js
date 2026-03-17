@@ -62,4 +62,11 @@ export const updateKnowledgeEntry = (id, data) =>
 
 export const deleteKnowledgeEntry = (id) => api.delete(`/knowledge/${id}`);
 
+// --- Train (Обучить) ---
+export const getTrainSuggestion = (conversationId) =>
+  api.get(`/knowledge/train/${conversationId}`);
+
+export const trainFromConversation = (question, answer, conversationId) =>
+  api.post("/knowledge/train", { question, answer, conversation_id: conversationId });
+
 export default api;

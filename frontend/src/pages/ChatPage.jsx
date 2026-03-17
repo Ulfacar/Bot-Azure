@@ -6,6 +6,8 @@ import {
   getMessages,
   sendMessage,
   updateConversation,
+  getTrainSuggestion,
+  trainFromConversation,
 } from "../services/api";
 
 const STATUS_LABELS = {
@@ -30,6 +32,11 @@ export default function ChatPage() {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [clientConversations, setClientConversations] = useState([]);
+  const [showTrainModal, setShowTrainModal] = useState(false);
+  const [trainQuestion, setTrainQuestion] = useState("");
+  const [trainAnswer, setTrainAnswer] = useState("");
+  const [trainSaving, setTrainSaving] = useState(false);
+  const [trainSuccess, setTrainSuccess] = useState(false);
   const messagesEnd = useRef(null);
 
   const loadData = async () => {
@@ -109,6 +116,35 @@ export default function ChatPage() {
     setSending(false);
   };
 
+  const handleOpenTrain = async () => {
+    try {
+      const res = await getTrainSuggestion(id);
+      setTrainQuestion(res.data.question);
+      setTrainAnswer(res.data.answer);
+      setTrainSuccess(false);
+      setShowTrainModal(true);
+    } catch {
+      // Нет пары Q&A — откроем пустую форму
+      setTrainQuestion("");
+      setTrainAnswer("");
+      setTrainSuccess(false);
+      setShowTrainModal(true);
+    }
+  };
+
+  const handleTrain = async () => {
+    if (!trainQuestion.trim() || !trainAnswer.trim()) return;
+    setTrainSaving(true);
+    try {
+      await trainFromConversation(trainQuestion.trim(), trainAnswer.trim(), Number(id));
+      setTrainSuccess(true);
+      setTimeout(() => setShowTrainModal(false), 1500);
+    } catch (err) {
+      console.error(err);
+    }
+    setTrainSaving(false);
+  };
+
   if (!conversation) return <p className="loading">Загрузка...</p>;
 
   const client = conversation.client;
@@ -157,6 +193,9 @@ export default function ChatPage() {
               Закрыть диалог
             </button>
           )}
+          <button className="btn-train" onClick={handleOpenTrain}>
+            Обучить
+          </button>
         </div>
       </div>
 
@@ -248,6 +287,45 @@ export default function ChatPage() {
           )}
         </div>
       </div>
+
+      {showTrainModal && (
+        <div className="modal-overlay" onClick={() => setShowTrainModal(false)}>
+          <div className="modal train-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Обучить бота</h3>
+            <p className="train-hint">Бот запомнит этот ответ и будет использовать его в будущем</p>
+            <label>Вопрос клиента</label>
+            <textarea
+              value={trainQuestion}
+              onChange={(e) => setTrainQuestion(e.target.value)}
+              rows={3}
+              placeholder="Вопрос, на который бот должен научиться отвечать..."
+            />
+            <label>Ответ бота</label>
+            <textarea
+              value={trainAnswer}
+              onChange={(e) => setTrainAnswer(e.target.value)}
+              rows={4}
+              placeholder="Правильный ответ, который бот должен давать..."
+            />
+            <div className="train-actions">
+              <button
+                className="btn-cancel"
+                onClick={() => setShowTrainModal(false)}
+                disabled={trainSaving}
+              >
+                Отмена
+              </button>
+              <button
+                className="btn-save-train"
+                onClick={handleTrain}
+                disabled={trainSaving || !trainQuestion.trim() || !trainAnswer.trim()}
+              >
+                {trainSuccess ? "Сохранено!" : trainSaving ? "Сохраняю..." : "Сохранить в базу знаний"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
