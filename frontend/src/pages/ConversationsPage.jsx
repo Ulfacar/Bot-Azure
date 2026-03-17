@@ -91,6 +91,19 @@ export default function ConversationsPage() {
             <div className="stat-number">{stats.total.total}</div>
             <div className="stat-label">Всего диалогов</div>
           </div>
+          <div className="stat-card stat-efficiency">
+            <div className="stat-number">
+              {stats.total.total > 0
+                ? Math.round(
+                    ((stats.total.bot_completed + stats.total.closed) /
+                      stats.total.total) *
+                      100
+                  )
+                : 0}
+              %
+            </div>
+            <div className="stat-label">Эффективность бота</div>
+          </div>
         </div>
       )}
 

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   getConversation,
+  getConversations,
   getMessages,
   sendMessage,
   updateConversation,
@@ -28,6 +29,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const [clientConversations, setClientConversations] = useState([]);
   const messagesEnd = useRef(null);
 
   const loadData = async () => {
@@ -38,6 +40,15 @@ export default function ChatPage() {
       ]);
       setConversation(convRes.data);
       setMessages(msgRes.data);
+
+      // Загрузить историю обращений клиента
+      if (convRes.data?.client_id) {
+        const allConvs = await getConversations();
+        const clientConvs = allConvs.data.filter(
+          (c) => c.client_id === convRes.data.client_id
+        );
+        setClientConversations(clientConvs);
+      }
     } catch {
       navigate("/");
     }
@@ -84,9 +95,9 @@ export default function ChatPage() {
 
   const handleConfirmBooking = async () => {
     const msg =
-      "Благодарим вас! Ваше бронирование подтверждено.\n" +
+      "Ваше бронирование подтверждено!\n" +
       "Мы с нетерпением ждём вас в отеле Ton Azure!\n\n" +
-      "Если у вас возникнут дополнительные вопросы, пожалуйста, не стесняйтесь обращаться.";
+      "Если возникнут вопросы — пишите, будем рады помочь 😊";
     setSending(true);
     try {
       await sendMessage(id, msg);
@@ -101,6 +112,13 @@ export default function ChatPage() {
   if (!conversation) return <p className="loading">Загрузка...</p>;
 
   const client = conversation.client;
+
+  const CATEGORY_LABELS = {
+    booking: "Бронирование",
+    hotel: "Номера",
+    service: "Услуги",
+    general: "Общий",
+  };
 
   return (
     <div className="chat-page">
@@ -142,35 +160,94 @@ export default function ChatPage() {
         </div>
       </div>
 
-      <div className="messages-container">
-        {messages.map((msg) => (
-          <div key={msg.id} className={`message message-${msg.sender}`}>
-            <div className="message-sender">
-              {SENDER_LABELS[msg.sender]}
-            </div>
-            <div className="message-text">{msg.text}</div>
-            <div className="message-time">
-              {new Date(msg.created_at).toLocaleString("ru-RU")}
-            </div>
+      <div className="chat-body">
+        <div className="chat-main">
+          <div className="messages-container">
+            {messages.map((msg) => (
+              <div key={msg.id} className={`message message-${msg.sender}`}>
+                <div className="message-sender">
+                  {SENDER_LABELS[msg.sender]}
+                </div>
+                <div className="message-text">{msg.text}</div>
+                <div className="message-time">
+                  {new Date(msg.created_at).toLocaleString("ru-RU")}
+                </div>
+              </div>
+            ))}
+            <div ref={messagesEnd} />
           </div>
-        ))}
-        <div ref={messagesEnd} />
-      </div>
 
-      {conversation.status !== "closed" && (
-        <form className="message-form" onSubmit={handleSend}>
-          <input
-            type="text"
-            placeholder="Написать клиенту..."
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            disabled={sending}
-          />
-          <button type="submit" disabled={sending || !text.trim()}>
-            Отправить
-          </button>
-        </form>
-      )}
+          {conversation.status !== "closed" && (
+            <form className="message-form" onSubmit={handleSend}>
+              <input
+                type="text"
+                placeholder="Написать клиенту..."
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                disabled={sending}
+              />
+              <button type="submit" disabled={sending || !text.trim()}>
+                Отправить
+              </button>
+            </form>
+          )}
+        </div>
+
+        <div className="client-sidebar">
+          <h3>Клиент</h3>
+          <div className="client-field">
+            <span className="client-label">Имя</span>
+            <span className="client-value">{client?.name || "—"}</span>
+          </div>
+          <div className="client-field">
+            <span className="client-label">Username</span>
+            <span className="client-value">{client?.username ? `@${client.username}` : "—"}</span>
+          </div>
+          <div className="client-field">
+            <span className="client-label">Телефон</span>
+            <span className="client-value">{client?.phone || "Не указан"}</span>
+          </div>
+          <div className="client-field">
+            <span className="client-label">Канал</span>
+            <span className="client-value">
+              {client?.channel === "whatsapp" ? "📱 WhatsApp" : "✈️ Telegram"}
+            </span>
+          </div>
+          <div className="client-field">
+            <span className="client-label">Категория</span>
+            <span className="client-value">{CATEGORY_LABELS[conversation.category] || "—"}</span>
+          </div>
+          <div className="client-field">
+            <span className="client-label">Первый контакт</span>
+            <span className="client-value">
+              {new Date(client?.created_at).toLocaleDateString("ru-RU")}
+            </span>
+          </div>
+          <div className="client-field">
+            <span className="client-label">Обращений</span>
+            <span className="client-value">{clientConversations.length}</span>
+          </div>
+          {clientConversations.length > 1 && (
+            <div className="client-history">
+              <span className="client-label">История</span>
+              {clientConversations
+                .filter((c) => c.id !== conversation.id)
+                .map((c) => (
+                  <div
+                    key={c.id}
+                    className="client-history-item"
+                    onClick={() => navigate(`/chat/${c.id}`)}
+                  >
+                    #{c.id} — {CATEGORY_LABELS[c.category]}{" "}
+                    <span className="client-history-date">
+                      {new Date(c.created_at).toLocaleDateString("ru-RU")}
+                    </span>
+                  </div>
+                ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

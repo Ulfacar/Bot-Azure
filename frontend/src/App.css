@@ -179,6 +179,10 @@ body {
   border-top-color: #0ea5e9;
 }
 
+.stat-card.stat-efficiency {
+  border-top-color: #8b5cf6;
+}
+
 .stat-number {
   font-size: 28px;
   font-weight: 700;
@@ -349,6 +353,20 @@ body {
   display: flex;
   flex-direction: column;
   height: calc(100vh - 100px);
+}
+
+.chat-body {
+  display: flex;
+  flex: 1;
+  gap: 20px;
+  overflow: hidden;
+}
+
+.chat-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .chat-header {
@@ -550,6 +568,62 @@ body {
 .message-form button:disabled {
   background: #94a3b8;
   cursor: not-allowed;
+}
+
+/* --- Client Sidebar --- */
+
+.client-sidebar {
+  width: 240px;
+  min-width: 240px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.client-sidebar h3 {
+  margin: 0 0 16px;
+  font-size: 15px;
+  color: #334155;
+}
+
+.client-field {
+  margin-bottom: 12px;
+}
+
+.client-label {
+  display: block;
+  font-size: 11px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+
+.client-value {
+  font-size: 14px;
+  color: #1e293b;
+}
+
+.client-history {
+  margin-top: 8px;
+}
+
+.client-history-item {
+  font-size: 13px;
+  color: #0ea5e9;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.client-history-item:hover {
+  text-decoration: underline;
+}
+
+.client-history-date {
+  color: #94a3b8;
+  font-size: 12px;
 }
 
 /* --- Header buttons --- */
