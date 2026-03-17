@@ -106,6 +106,9 @@ async def train_from_conversation(
     current_operator: Operator = Depends(get_current_operator),
 ):
     """Сохранить пару вопрос-ответ из диалога в базу знаний."""
+    if not data.question.strip() or not data.answer.strip():
+        raise HTTPException(status_code=400, detail="Вопрос и ответ не могут быть пустыми")
+
     from app.services.knowledge import add_to_knowledge_base
 
     entry = await add_to_knowledge_base(
