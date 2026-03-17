@@ -131,11 +131,15 @@ async def get_efficiency(
     bot_solved = row.bot_solved or 0
     escalated = row.escalated or 0
 
-    # Среднее кол-во сообщений бота на диалог
-    result = await session.execute(
-        select(func.avg(func.count(Message.id)))
+    # Среднее кол-во сообщений бота на диалог (через подзапрос)
+    bot_counts = (
+        select(func.count(Message.id).label("cnt"))
         .where(Message.sender == MessageSender.bot)
         .group_by(Message.conversation_id)
+        .subquery()
+    )
+    result = await session.execute(
+        select(func.avg(bot_counts.c.cnt))
     )
     avg_bot_messages = result.scalar() or 0
 

@@ -47,14 +47,18 @@ export default function ConversationsPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [convRes, statsRes, effRes] = await Promise.all([
+      const [convRes, statsRes] = await Promise.all([
         getConversations(filter || undefined, search || undefined),
         getStats(),
-        getEfficiency(),
       ]);
       setConversations(convRes.data);
       setStats(statsRes.data);
-      setEfficiency(effRes.data);
+      try {
+        const effRes = await getEfficiency();
+        setEfficiency(effRes.data);
+      } catch {
+        // efficiency — не критично, диалоги всё равно покажем
+      }
     } catch (err) {
       console.error(err);
     }
