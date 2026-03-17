@@ -39,6 +39,8 @@ export const getConversation = (id) => api.get(`/conversations/${id}`);
 
 export const getStats = () => api.get("/conversations/stats");
 
+export const getEfficiency = () => api.get("/conversations/stats/efficiency");
+
 export const updateConversation = (id, data) =>
   api.patch(`/conversations/${id}`, data);
 

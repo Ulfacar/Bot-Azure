@@ -2,14 +2,14 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, case, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.schemas import ConversationOut, ConversationUpdate
 from app.core.auth import get_current_operator
 from app.db.database import get_session
-from app.db.models.models import Client, Conversation, ConversationStatus, Operator
+from app.db.models.models import Client, Conversation, ConversationStatus, Message, MessageSender, Operator
 
 router = APIRouter(prefix="/conversations", tags=["Conversations"])
 
@@ -90,6 +90,87 @@ async def get_stats(
             "operator_active": total_by_status.get(ConversationStatus.operator_active, 0),
             "in_progress": total_by_status.get(ConversationStatus.in_progress, 0),
             "closed": total_by_status.get(ConversationStatus.closed, 0),
+        },
+    }
+
+
+@router.get("/stats/efficiency", response_model=dict)
+async def get_efficiency(
+    session: AsyncSession = Depends(get_session),
+    operator: Operator = Depends(get_current_operator),
+):
+    """Расширенная статистика эффективности бота."""
+    now = datetime.utcnow() + timedelta(hours=6)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # Общее количество завершённых диалогов (не in_progress)
+    finished_statuses = [
+        ConversationStatus.bot_completed,
+        ConversationStatus.closed,
+        ConversationStatus.needs_operator,
+        ConversationStatus.operator_active,
+    ]
+
+    result = await session.execute(
+        select(
+            func.count(Conversation.id).label("total_finished"),
+            func.count(case(
+                (Conversation.status == ConversationStatus.bot_completed, 1),
+            )).label("bot_solved"),
+            func.count(case(
+                (Conversation.status.in_([
+                    ConversationStatus.needs_operator,
+                    ConversationStatus.operator_active,
+                ]), 1),
+            )).label("escalated"),
+        )
+        .where(Conversation.status.in_(finished_statuses))
+    )
+    row = result.one()
+    total_finished = row.total_finished or 0
+    bot_solved = row.bot_solved or 0
+    escalated = row.escalated or 0
+
+    # Среднее кол-во сообщений бота на диалог
+    result = await session.execute(
+        select(func.avg(func.count(Message.id)))
+        .where(Message.sender == MessageSender.bot)
+        .group_by(Message.conversation_id)
+    )
+    avg_bot_messages = result.scalar() or 0
+
+    # Уникальные клиенты
+    result = await session.execute(
+        select(func.count(distinct(Conversation.client_id)))
+    )
+    unique_clients = result.scalar() or 0
+
+    # Сегодня
+    result = await session.execute(
+        select(
+            func.count(Conversation.id).label("today_total"),
+            func.count(case(
+                (Conversation.status == ConversationStatus.bot_completed, 1),
+            )).label("today_bot_solved"),
+        )
+        .where(Conversation.created_at >= today_start)
+        .where(Conversation.status.in_(finished_statuses))
+    )
+    today_row = result.one()
+
+    return {
+        "total_finished": total_finished,
+        "bot_solved": bot_solved,
+        "escalated": escalated,
+        "efficiency_percent": round(bot_solved / total_finished * 100) if total_finished > 0 else 0,
+        "avg_bot_messages": round(float(avg_bot_messages), 1),
+        "unique_clients": unique_clients,
+        "today": {
+            "total_finished": today_row.today_total or 0,
+            "bot_solved": today_row.today_bot_solved or 0,
+            "efficiency_percent": round(
+                (today_row.today_bot_solved or 0) / (today_row.today_total or 1) * 100
+            ) if (today_row.today_total or 0) > 0 else 0,
         },
     }
 

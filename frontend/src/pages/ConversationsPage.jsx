@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { getConversations, getStats } from "../services/api";
+import { getConversations, getStats, getEfficiency } from "../services/api";
 
 const STATUS_LABELS = {
   in_progress: "В процессе",
@@ -38,6 +38,7 @@ export default function ConversationsPage() {
   const [searchParams] = useSearchParams();
   const [conversations, setConversations] = useState([]);
   const [stats, setStats] = useState(null);
+  const [efficiency, setEfficiency] = useState(null);
   const [filter, setFilter] = useState(searchParams.get("filter") || "");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -46,12 +47,14 @@ export default function ConversationsPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [convRes, statsRes] = await Promise.all([
+      const [convRes, statsRes, effRes] = await Promise.all([
         getConversations(filter || undefined, search || undefined),
         getStats(),
+        getEfficiency(),
       ]);
       setConversations(convRes.data);
       setStats(statsRes.data);
+      setEfficiency(effRes.data);
     } catch (err) {
       console.error(err);
     }
@@ -93,16 +96,15 @@ export default function ConversationsPage() {
           </div>
           <div className="stat-card stat-efficiency">
             <div className="stat-number">
-              {stats.total.total > 0
-                ? Math.round(
-                    ((stats.total.bot_completed + stats.total.closed) /
-                      stats.total.total) *
-                      100
-                  )
-                : 0}
-              %
+              {efficiency ? efficiency.efficiency_percent : 0}%
             </div>
             <div className="stat-label">Эффективность бота</div>
+            {efficiency && (
+              <div className="stat-details">
+                <span title="Уникальных клиентов">👤 {efficiency.unique_clients}</span>
+                <span title="Среднее сообщений бота">💬 {efficiency.avg_bot_messages}</span>
+              </div>
+            )}
           </div>
         </div>
       )}
