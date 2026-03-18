@@ -11,6 +11,7 @@ from app.bot.ai.assistant import (
     generate_response,
     needs_operator,
     format_knowledge_answer,
+    check_and_format_availability,
 )
 from app.core.config import settings
 from app.db.database import async_session
@@ -457,6 +458,20 @@ async def handle_client_message(message: types.Message, session):
             conversation.status = ConversationStatus.bot_completed
 
         response_text = clean_response(response_text)
+
+        # Проверяем доступность через Exely если это booking-диалог
+        # и в сообщениях клиента есть даты
+        if (
+            conversation.category == ConversationCategory.booking
+            or category == "booking"
+        ):
+            try:
+                all_messages = await get_conversation_history(session, conversation.id, limit=20)
+                availability_text = await check_and_format_availability(all_messages)
+                if availability_text:
+                    response_text = response_text + "\n\n" + availability_text
+            except Exception as e:
+                logger.error(f"Ошибка проверки Exely: {e}")
 
         # Если нужен менеджер — отправить уведомление
         if need_operator:

@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     openrouter_api_key: str = ""
     ai_model: str = "deepseek/deepseek-chat"
 
+    # Exely (система бронирования)
+    exely_api_key: str = ""
+    exely_hotel_code: str = ""
+
     # JWT для админки
     secret_key: str = ""
     access_token_expire_minutes: int = 480
