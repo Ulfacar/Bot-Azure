@@ -25,11 +25,11 @@ class ExelyPMSClient:
     BASE_URL = "https://connect.hopenapi.com/api/exelypms/v1"
 
     def __init__(self, api_key: str):
-        self.api_key = api_key
+        self.api_key = api_key.strip()
         self._client = httpx.AsyncClient(
             base_url=self.BASE_URL,
             headers={
-                "X-API-KEY": api_key,
+                "X-API-KEY": self.api_key,
                 "Content-Type": "application/json",
                 "Accept": "application/json",
             },
