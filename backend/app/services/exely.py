@@ -1,374 +1,224 @@
-"""Сервис интеграции с Exely — проверка доступности и бронирование."""
+"""Сервис интеграции с Exely PMS — проверка доступности номеров."""
 
 import logging
+from collections import Counter
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 
 from app.core.config import settings
-from app.exely_client.client import ExelyClient, ExelyApiException
-from app.exely_client.schemas import (
-    HotelAvailabilityRequestParams,
-    HotelAvailabilityCriterion,
-    HotelAvailabilityCriterionHotel,
-    HotelAvailabilityResponse,
-    HotelReservationRequest,
-    HotelReservationRequestItem,
-    HotelReservationResponse,
-    HotelRef,
-    RoomStayReservation,
-    RoomTypeReservation,
-    RoomTypeReservationPlacement,
-    RatePlanReservation,
-    GuestCountInfoAPI,
-    GuestCountDetailAPI,
-    GuestInfo,
-    GuestPlacementRef,
-    GuaranteeReservation,
-    CustomerReservation,
-    CustomerContactInfo,
-    CustomerContactPhone,
-    CustomerContactEmail,
-    DateRangeStay,
-    CancelReservationRequestPayload,
-    CancelHotelReservationRef,
-    CancelReservationVerification,
-)
+from app.exely_client.client import ExelyPMSClient, ExelyApiException
+from app.exely_client.schemas import PMSRoom, PMSBooking, PMSRoomStay
 
 logger = logging.getLogger(__name__)
 
 # Синглтон клиента
-_client: ExelyClient | None = None
+_client: ExelyPMSClient | None = None
+
+# Маппинг roomTypeId → название категории
+ROOM_TYPE_NAMES = {
+    "5064615": "Twin/Double comfort (двухместный)",
+    "5064616": "Triple comfort (трёхместный)",
+    "5064617": "Triple comfort (трёхместный)",
+    "5064618": "Family comfort (четырёхместный)",
+}
+
+# Маппинг roomTypeId → макс. гостей
+ROOM_TYPE_CAPACITY = {
+    "5064615": 2,
+    "5064616": 3,
+    "5064617": 3,
+    "5064618": 4,
+}
+
+# Количество номеров по типу (из данных PMS)
+ROOM_TYPE_TOTAL = {
+    "5064615": 12,  # Twin/Double
+    "5064616": 1,   # Triple
+    "5064617": 2,   # Triple
+    "5064618": 2,   # Family
+}
 
 
-def get_exely_client() -> ExelyClient | None:
-    """Получить экземпляр Exely клиента."""
+def get_exely_client() -> ExelyPMSClient | None:
+    """Получить экземпляр Exely PMS клиента."""
     global _client
     if not settings.exely_api_key:
         return None
     if _client is None:
-        _client = ExelyClient(api_key=settings.exely_api_key)
+        _client = ExelyPMSClient(api_key=settings.exely_api_key)
     return _client
 
 
+def _get_season_price(room_type_id: str, checkin: date) -> int | None:
+    """Получить цену за ночь по сезону и типу номера."""
+    month, day = checkin.month, checkin.day
+
+    # Определяем сезон
+    if (month == 6 and day >= 1) or (month in (7, 8)) or (month == 9 and day <= 15):
+        season = "high"       # 1 июн — 15 сен
+    elif (month >= 2 and month <= 5) or (month == 1 and day == 31):
+        season = "mid_spring"  # 1 фев — 31 мая
+    elif (month == 9 and day >= 16) or (month == 10) or (month == 11 and day <= 15):
+        season = "mid_autumn"  # 16 сен — 15 ноя
+    else:
+        season = "low"        # 16 ноя — 31 янв
+
+    prices = {
+        # roomTypeId: {season: price_per_night}
+        "5064615": {"low": 6000, "mid_spring": 8000, "high": 9000, "mid_autumn": 8000},
+        "5064616": {"low": 9000, "mid_spring": 11000, "high": 12500, "mid_autumn": 11000},
+        "5064617": {"low": 9000, "mid_spring": 11000, "high": 12500, "mid_autumn": 11000},
+        "5064618": {"low": 10000, "mid_spring": 14000, "high": 15700, "mid_autumn": 14000},
+    }
+
+    type_prices = prices.get(room_type_id)
+    if not type_prices:
+        return None
+    return type_prices.get(season)
+
+
 @dataclass
-class RoomOption:
-    """Упрощённый вариант номера для отображения гостю."""
-    room_type_code: str
+class RoomAvailability:
+    """Доступность номеров по категории."""
+    room_type_id: str
     room_type_name: str
-    rate_plan_code: str
-    total_price: float
-    currency: str
-    nights: int
-    price_per_night: float
-    free_cancellation: bool
-    guarantee_code: str
+    total_rooms: int
+    occupied_rooms: int
+    free_rooms: int
+    max_guests: int
+    price_per_night: int
+    currency: str = "KGS"
 
 
 async def check_availability(
     checkin: date,
     checkout: date,
-    adults: int,
-    children_ages: list[int] | None = None,
-) -> list[RoomOption]:
-    """Проверить доступность номеров на даты.
+    adults: int = 2,
+) -> list[RoomAvailability]:
+    """Проверить доступность номеров на даты через PMS API.
 
-    Возвращает список доступных вариантов (упрощённых для бота).
+    Логика: получаем все активные брони на период → считаем занятые номера
+    по типу → вычитаем из общего количества.
     """
     client = get_exely_client()
     if not client:
-        logger.warning("Exely не настроен — пропускаем проверку доступности")
+        logger.warning("Exely PMS не настроен — пропускаем проверку доступности")
         return []
-
-    hotel_code = settings.exely_hotel_code
-    if not hotel_code:
-        logger.warning("EXELY_HOTEL_CODE не задан")
-        return []
-
-    dates_str = f"{checkin.isoformat()};{checkout.isoformat()}"
-    children_str = ",".join(str(a) for a in children_ages) if children_ages else None
-    nights = (checkout - checkin).days
-
-    request = HotelAvailabilityRequestParams(
-        language="ru",
-        currency="KGS",
-        include_transfers=False,
-        include_rates=True,
-        include_all_placements=True,
-        criterions=[
-            HotelAvailabilityCriterion(
-                ref="0",
-                hotels=[HotelAvailabilityCriterionHotel(code=hotel_code)],
-                dates=dates_str,
-                adults=adults,
-                children=children_str,
-            )
-        ],
-    )
 
     try:
-        response = await client.get_availability(request)
-    except ExelyApiException as e:
-        logger.error(f"Ошибка проверки доступности Exely: {e}")
-        return []
-    except Exception as e:
-        logger.error(f"Неожиданная ошибка Exely: {e}")
-        return []
+        # Ищем активные брони, пересекающиеся с периодом
+        period_from = f"{checkin.isoformat()}T00:00"
+        period_to = f"{checkout.isoformat()}T00:00"
 
-    # Получаем информацию об отеле для имён типов номеров
-    room_names = await _get_room_type_names(hotel_code)
-
-    options: list[RoomOption] = []
-    for room_stay in response.room_stays:
-        # Берём первый guarantee code
-        guarantee_code = room_stay.guarantees[0].code if room_stay.guarantees else ""
-
-        for room_type in room_stay.room_types:
-            for rate_plan in room_stay.rate_plans:
-                # Считаем цену для этой комбинации room_type + rate_plan
-                total = 0.0
-                currency = "KGS"
-                for pr in room_stay.placement_rates:
-                    if pr.room_type_code == room_type.code and pr.rate_plan_code == rate_plan.code:
-                        for daily in pr.rates:
-                            total += daily.price_after_tax
-                            currency = daily.currency
-
-                if total <= 0:
-                    # Используем общую цену room_stay
-                    total = room_stay.total.price_after_tax
-                    currency = room_stay.total.currency
-
-                name = room_names.get(room_type.code, room_type.code)
-                price_per_night = total / nights if nights > 0 else total
-
-                options.append(RoomOption(
-                    room_type_code=room_type.code,
-                    room_type_name=name,
-                    rate_plan_code=rate_plan.code,
-                    total_price=total,
-                    currency=currency,
-                    nights=nights,
-                    price_per_night=price_per_night,
-                    free_cancellation=rate_plan.cancel_penalty_group.free_cancellation or False,
-                    guarantee_code=guarantee_code,
-                ))
-
-    # Убираем дубликаты по room_type_code (оставляем самый дешёвый)
-    seen: dict[str, RoomOption] = {}
-    for opt in options:
-        if opt.room_type_code not in seen or opt.total_price < seen[opt.room_type_code].total_price:
-            seen[opt.room_type_code] = opt
-
-    result = sorted(seen.values(), key=lambda o: o.total_price)
-    logger.info(f"Exely: найдено {len(result)} вариантов на {checkin}—{checkout}, {adults} взр.")
-    return result
-
-
-# Кэш имён типов номеров
-_room_names_cache: dict[str, str] = {}
-
-
-async def _get_room_type_names(hotel_code: str) -> dict[str, str]:
-    """Получить маппинг code → name для типов номеров."""
-    global _room_names_cache
-    if _room_names_cache:
-        return _room_names_cache
-
-    client = get_exely_client()
-    if not client:
-        return {}
-
-    try:
-        info = await client.get_hotel_info(hotel_code, language="ru")
-        hotels = info.get("hotels", [])
-        if hotels:
-            for rt in hotels[0].get("room_types", []):
-                _room_names_cache[rt["code"]] = rt.get("name", rt["code"])
-        logger.info(f"Exely: загружено {len(_room_names_cache)} типов номеров")
-    except Exception as e:
-        logger.error(f"Ошибка загрузки hotel_info: {e}")
-
-    return _room_names_cache
-
-
-def format_availability_for_bot(options: list[RoomOption]) -> str:
-    """Форматировать результаты доступности для ответа бота."""
-    if not options:
-        return ""
-
-    lines = ["📋 Доступные номера на ваши даты:\n"]
-    for i, opt in enumerate(options, 1):
-        cancel_text = "✅ бесплатная отмена" if opt.free_cancellation else ""
-        lines.append(
-            f"{i}. **{opt.room_type_name}**\n"
-            f"   {opt.total_price:,.0f} {opt.currency} за {opt.nights} ноч. "
-            f"({opt.price_per_night:,.0f} {opt.currency}/ночь)"
-            + (f" — {cancel_text}" if cancel_text else "")
+        booking_numbers = await client.search_bookings(
+            state="Active",
+            affects_period_from=period_from,
+            affects_period_to=period_to,
         )
 
-    lines.append(
-        "\nКакой номер вас заинтересовал? Для бронирования мне понадобятся ваше имя и номер телефона 😊"
-    )
-    return "\n".join(lines)
+        # Считаем занятые номера по типу
+        occupied_by_type: Counter[str] = Counter()
+
+        for bn in booking_numbers:
+            try:
+                booking_data = await client.get_booking(bn)
+                booking = PMSBooking.model_validate(booking_data)
+
+                for rs in booking.roomStays:
+                    # Проверяем что roomStay действительно пересекается с нашим периодом
+                    # и не отменён
+                    if rs.bookingStatus == "Cancelled":
+                        continue
+                    rs_checkin = datetime.fromisoformat(rs.checkInDateTime).date()
+                    rs_checkout = datetime.fromisoformat(rs.checkOutDateTime).date()
+                    if rs_checkin < checkout and rs_checkout > checkin:
+                        occupied_by_type[rs.roomTypeId] += 1
+
+            except ExelyApiException as e:
+                logger.error(f"Ошибка получения брони {bn}: {e}")
+                continue
+
+        # Формируем результат по каждому типу номера
+        results: list[RoomAvailability] = []
+
+        # Группируем 5064616 и 5064617 как Triple
+        triple_total = ROOM_TYPE_TOTAL.get("5064616", 0) + ROOM_TYPE_TOTAL.get("5064617", 0)
+        triple_occupied = occupied_by_type.get("5064616", 0) + occupied_by_type.get("5064617", 0)
+        triple_free = triple_total - triple_occupied
+
+        for type_id, total in ROOM_TYPE_TOTAL.items():
+            if type_id == "5064617":
+                # Уже посчитан вместе с 5064616
+                continue
+
+            if type_id == "5064616":
+                free = triple_free
+                total_count = triple_total
+                occupied = triple_occupied
+            else:
+                occupied = occupied_by_type.get(type_id, 0)
+                free = total - occupied
+                total_count = total
+
+            if free <= 0:
+                continue
+
+            price = _get_season_price(type_id, checkin)
+            if not price:
+                continue
+
+            name = ROOM_TYPE_NAMES.get(type_id, f"Тип {type_id}")
+            capacity = ROOM_TYPE_CAPACITY.get(type_id, 2)
+
+            results.append(RoomAvailability(
+                room_type_id=type_id,
+                room_type_name=name,
+                total_rooms=total_count,
+                occupied_rooms=occupied,
+                free_rooms=free,
+                max_guests=capacity,
+                price_per_night=price,
+            ))
+
+        # Сортируем по цене
+        results.sort(key=lambda r: r.price_per_night)
+
+        logger.info(
+            f"Exely PMS: {checkin}—{checkout}, {adults} гост. | "
+            f"Брони: {len(booking_numbers)}, свободных категорий: {len(results)}"
+        )
+        return results
+
+    except ExelyApiException as e:
+        logger.error(f"Ошибка проверки доступности Exely PMS: {e}")
+        return []
+    except Exception as e:
+        logger.error(f"Неожиданная ошибка Exely PMS: {e}")
+        return []
 
 
-def format_availability_for_telegram(options: list[RoomOption]) -> str:
-    """Форматировать для Telegram (без Markdown)."""
+def format_availability_for_telegram(options: list[RoomAvailability], nights: int) -> str:
+    """Форматировать результаты доступности для Telegram."""
     if not options:
         return ""
 
-    lines = ["📋 Доступные номера на ваши даты:\n"]
+    lines = ["Доступные номера на ваши даты:\n"]
     for i, opt in enumerate(options, 1):
-        cancel_text = " (бесплатная отмена)" if opt.free_cancellation else ""
+        total_price = opt.price_per_night * nights
         lines.append(
             f"{i}. {opt.room_type_name}\n"
-            f"   {opt.total_price:,.0f} {opt.currency} за {opt.nights} ноч. "
-            f"({opt.price_per_night:,.0f} {opt.currency}/ночь){cancel_text}"
+            f"   {opt.price_per_night:,} {opt.currency}/ночь "
+            f"({total_price:,} {opt.currency} за {nights} ноч.)\n"
+            f"   Свободно: {opt.free_rooms} из {opt.total_rooms}, до {opt.max_guests} гостей"
         )
 
-    lines.append(
-        "\nКакой номер вас заинтересовал? Для бронирования мне понадобятся ваше имя и номер телефона 😊"
-    )
     return "\n".join(lines)
 
 
-async def create_booking(
-    checkin: date,
-    checkout: date,
-    adults: int,
-    room_type_code: str,
-    rate_plan_code: str,
-    guarantee_code: str,
-    guest_first_name: str,
-    guest_last_name: str,
-    phone: str,
-    email: str = "tonazure.hotel@gmail.com",
-    children_ages: list[int] | None = None,
-) -> HotelReservationResponse | None:
-    """Создать бронирование в Exely."""
-    client = get_exely_client()
-    if not client:
-        return None
+def format_availability_short(options: list[RoomAvailability]) -> str:
+    """Короткий формат — просто подтверждение наличия (для физлиц)."""
+    if not options:
+        return ""
 
-    hotel_code = settings.exely_hotel_code
-
-    # Формируем placements для гостей
-    placements = [
-        RoomTypeReservationPlacement(index=0, kind="adult", code="adult_bed")
-    ]
-    guest_counts = [
-        GuestCountDetailAPI(count=adults, age_qualifying_code="adult", placement_index=0)
-    ]
-    guests = [
-        GuestInfo(
-            placement=GuestPlacementRef(index=0),
-            first_name=guest_first_name,
-            last_name=guest_last_name,
-        )
-    ]
-
-    if children_ages:
-        for idx, age in enumerate(children_ages, 1):
-            placements.append(
-                RoomTypeReservationPlacement(index=idx, kind="child", code="child_bed")
-            )
-            guest_counts.append(
-                GuestCountDetailAPI(
-                    count=1,
-                    age_qualifying_code="child",
-                    placement_index=idx,
-                    age=age,
-                )
-            )
-
-    request = HotelReservationRequest(
-        language="ru",
-        currency="KGS",
-        hotel_reservations=[
-            HotelReservationRequestItem(
-                hotel_ref=HotelRef(code=hotel_code),
-                room_stays=[
-                    RoomStayReservation(
-                        stay_dates=DateRangeStay(
-                            start_date=f"{checkin.isoformat()} 14:00:00",
-                            end_date=f"{checkout.isoformat()} 12:00:00",
-                        ),
-                        room_types=[
-                            RoomTypeReservation(
-                                code=room_type_code,
-                                placements=placements,
-                            )
-                        ],
-                        rate_plans=[RatePlanReservation(code=rate_plan_code)],
-                        guest_count_info=GuestCountInfoAPI(
-                            guest_counts=guest_counts,
-                            adults=adults,
-                            children=len(children_ages) if children_ages else 0,
-                        ),
-                        guests=guests,
-                    )
-                ],
-                guarantee=GuaranteeReservation(
-                    code=guarantee_code,
-                    success_url="https://www.tonazure-hotel.com/booking/success",
-                    decline_url="https://www.tonazure-hotel.com/booking/decline",
-                ),
-                customer=CustomerReservation(
-                    first_name=guest_first_name,
-                    last_name=guest_last_name,
-                    confirm_sms=True,
-                    subscribe_email=False,
-                    contact_info=CustomerContactInfo(
-                        phones=[CustomerContactPhone(phone_number=phone)],
-                        emails=[CustomerContactEmail(email_address=email)],
-                    ),
-                ),
-            )
-        ],
-    )
-
-    try:
-        response = await client.create_reservation(request)
-        if response.hotel_reservations:
-            res = response.hotel_reservations[0]
-            logger.info(
-                f"Exely: бронь создана #{res.number}, статус={res.status}, "
-                f"сумма={res.total.price_after_tax} {res.total.currency}"
-            )
-        return response
-    except ExelyApiException as e:
-        logger.error(f"Ошибка создания бронирования: {e}")
-        return None
-
-
-async def cancel_booking(
-    booking_number: str,
-    cancellation_code: str,
-) -> bool:
-    """Отменить бронирование в Exely."""
-    client = get_exely_client()
-    if not client:
-        return False
-
-    request = CancelReservationRequestPayload(
-        language="ru",
-        hotel_reservation_refs=[
-            CancelHotelReservationRef(
-                number=booking_number,
-                verification=CancelReservationVerification(
-                    cancellation_code=cancellation_code,
-                ),
-            )
-        ],
-    )
-
-    try:
-        response = await client.cancel_reservation(request)
-        if response.hotel_reservations:
-            status = response.hotel_reservations[0].status
-            logger.info(f"Exely: бронь {booking_number} отменена, статус={status}")
-            return status in ("cancelled", "canceled")
-        return False
-    except ExelyApiException as e:
-        logger.error(f"Ошибка отмены бронирования {booking_number}: {e}")
-        return False
+    total_free = sum(o.free_rooms for o in options)
+    return f"На ваши даты есть свободные номера (всего {total_free} свободных)."
