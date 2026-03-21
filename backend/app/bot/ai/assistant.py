@@ -1,5 +1,6 @@
 import logging
 import re
+from dataclasses import dataclass
 from datetime import date, datetime
 
 from openai import AsyncOpenAI
@@ -495,6 +496,62 @@ def extract_adults_count(messages: list[Message]) -> int | None:
                 if 1 <= n <= 10:
                     return n
     return None
+
+
+_PHONE_RE = re.compile(
+    r"(?:\+?\d[\d\s\-()]{7,}\d)",
+)
+
+_NAME_RE = re.compile(
+    r"([А-ЯЁ][а-яё]+(?:\s+[А-ЯЁ][а-яё]+){1,2})",
+)
+
+
+def extract_phone(messages: list[Message]) -> str | None:
+    """Извлечь номер телефона из сообщений клиента."""
+    for msg in reversed(messages):
+        if msg.sender != MessageSender.client:
+            continue
+        m = _PHONE_RE.search(msg.text)
+        if m:
+            return m.group(0).strip()
+    return None
+
+
+def extract_guest_name(messages: list[Message]) -> str | None:
+    """Извлечь ФИО гостя из сообщений клиента."""
+    for msg in reversed(messages):
+        if msg.sender != MessageSender.client:
+            continue
+        m = _NAME_RE.search(msg.text)
+        if m:
+            return m.group(1).strip()
+    return None
+
+
+@dataclass
+class BookingRequest:
+    """Собранные данные для бронирования."""
+    checkin: date | None = None
+    checkout: date | None = None
+    nights: int = 0
+    adults: int | None = None
+    guest_name: str | None = None
+    phone: str | None = None
+
+
+def extract_booking_data(messages: list[Message]) -> BookingRequest:
+    """Извлечь все данные бронирования из диалога."""
+    checkin, checkout = extract_booking_dates(messages)
+    nights = (checkout - checkin).days if checkin and checkout else 0
+    return BookingRequest(
+        checkin=checkin,
+        checkout=checkout,
+        nights=nights,
+        adults=extract_adults_count(messages),
+        guest_name=extract_guest_name(messages),
+        phone=extract_phone(messages),
+    )
 
 
 async def check_and_format_availability(

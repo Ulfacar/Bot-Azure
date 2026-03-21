@@ -12,6 +12,7 @@ from app.bot.ai.assistant import (
     needs_operator,
     format_knowledge_answer,
     check_and_format_availability,
+    extract_booking_data,
 )
 from app.core.config import settings
 from app.db.database import async_session
@@ -475,6 +476,18 @@ async def handle_client_message(message: types.Message, session):
 
         # Если нужен менеджер — отправить уведомление
         if need_operator:
+            # Извлекаем данные бронирования если это booking-диалог
+            booking_data = None
+            if (
+                conversation.category == ConversationCategory.booking
+                or category == "booking"
+            ):
+                try:
+                    all_msgs = await get_conversation_history(session, conversation.id, limit=20)
+                    booking_data = extract_booking_data(all_msgs)
+                except Exception as e:
+                    logger.error(f"Ошибка извлечения данных бронирования: {e}")
+
             await session.commit()
             await notify_operators_new_request(
                 bot=message.bot,
@@ -482,6 +495,7 @@ async def handle_client_message(message: types.Message, session):
                 conversation=conversation,
                 client=client,
                 last_message=message.text,
+                booking_data=booking_data,
             )
 
     # 7. Сохранить ответ бота

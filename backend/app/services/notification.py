@@ -53,8 +53,12 @@ async def notify_operators_new_request(
     conversation: Conversation,
     client: Client,
     last_message: str,
+    booking_data=None,
 ):
-    """Отправить уведомление всем менеджерам о новом запросе."""
+    """Отправить уведомление всем менеджерам о новом запросе.
+
+    booking_data — BookingRequest из assistant.py (если это бронирование).
+    """
     operators = await get_operators_with_telegram(session)
 
     if not operators:
@@ -73,16 +77,40 @@ async def notify_operators_new_request(
         channel_icon = "✈️"
         channel_name = "Telegram"
 
-    text = (
-        f"🔔 <b>Нужна помощь!</b>\n\n"
-        f"👤 <b>Гость:</b> {client_name} {client_username}\n"
-        f"{channel_icon} <b>Канал:</b> {channel_name}\n"
-        f"💬 <b>Вопрос:</b>\n{last_message}\n\n"
-        f"📍 Диалог #{conversation.id}"
-    )
+    # Если есть данные бронирования — расширенное уведомление
+    if booking_data and booking_data.checkin:
+        dates_str = ""
+        if booking_data.checkin and booking_data.checkout:
+            dates_str = (
+                f"{booking_data.checkin.strftime('%d.%m.%Y')} — "
+                f"{booking_data.checkout.strftime('%d.%m.%Y')} "
+                f"({booking_data.nights} ноч.)"
+            )
+
+        guest_name = booking_data.guest_name or client_name
+        phone = booking_data.phone or "не указан"
+        adults = booking_data.adults or "не указано"
+
+        text = (
+            f"📋 <b>ЗАЯВКА НА БРОНЬ</b>\n\n"
+            f"📅 <b>Даты:</b> {dates_str}\n"
+            f"👥 <b>Гостей:</b> {adults}\n\n"
+            f"👤 <b>Гость:</b> {guest_name}\n"
+            f"📞 <b>Тел:</b> {phone}\n"
+            f"{channel_icon} <b>Канал:</b> {channel_name} {client_username}\n\n"
+            f"📍 Диалог #{conversation.id}"
+        )
+    else:
+        text = (
+            f"🔔 <b>Нужна помощь!</b>\n\n"
+            f"👤 <b>Гость:</b> {client_name} {client_username}\n"
+            f"{channel_icon} <b>Канал:</b> {channel_name}\n"
+            f"💬 <b>Вопрос:</b>\n{last_message}\n\n"
+            f"📍 Диалог #{conversation.id}"
+        )
 
     # Кнопки
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+    buttons = [
         [
             InlineKeyboardButton(
                 text="✍️ Ответить",
@@ -93,7 +121,18 @@ async def notify_operators_new_request(
                 callback_data=f"history:{conversation.id}"
             ),
         ]
-    ])
+    ]
+
+    # Добавляем кнопку Exely если это заявка на бронь
+    if booking_data and booking_data.checkin:
+        buttons.append([
+            InlineKeyboardButton(
+                text="🏨 Открыть Exely",
+                url="https://exely.io"
+            ),
+        ])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
 
     # Отправляем всем менеджерам
     for operator in operators:
