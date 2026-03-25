@@ -1,7 +1,6 @@
 import asyncio
 import logging
 
-import fastapi
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -51,50 +50,6 @@ async def health():
     """Health check для Railway / мониторинга."""
     return {"status": "ok"}
 
-
-@app.post("/api/test-prompt")
-async def test_prompt(request: dict = fastapi.Body(...)):
-    """Temporary test endpoint — remove after testing."""
-    from app.bot.ai.assistant import (
-        get_ai_client, SYSTEM_PROMPT, clean_response, needs_operator,
-    )
-    from app.db.models.models import MessageSender
-
-    messages_input = request.get("messages", [])
-    knowledge_hint = request.get("knowledge_hint")
-
-    client = get_ai_client()
-    if not client:
-        return {"error": "No OpenRouter client"}
-
-    # Build messages array directly (bypass generate_response to avoid SQLAlchemy issues)
-    api_messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-
-    if knowledge_hint:
-        api_messages.append({"role": "system", "content": (
-            f"=== ПОДСКАЗКА ИЗ БАЗЫ ЗНАНИЙ ===\n{knowledge_hint}\n"
-            "Используй если релевантно, иначе игнорируй."
-        )})
-
-    for m in messages_input:
-        role = "user" if m["role"] == "client" else "assistant"
-        api_messages.append({"role": role, "content": m["text"]})
-
-    try:
-        response = await client.chat.completions.create(
-            model=settings.ai_model,
-            max_tokens=800,
-            temperature=0.3,
-            messages=api_messages,
-        )
-        raw = response.choices[0].message.content or ""
-        return {
-            "raw": raw,
-            "clean": clean_response(raw),
-            "needs_operator": needs_operator(raw),
-        }
-    except Exception as e:
-        return {"error": str(e)}
 
 
 @app.get("/api/status")
