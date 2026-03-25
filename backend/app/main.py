@@ -51,6 +51,36 @@ async def health():
     return {"status": "ok"}
 
 
+@app.post("/api/test-prompt")
+async def test_prompt(data: dict):
+    """Temporary test endpoint — remove after testing."""
+    from app.bot.ai.assistant import generate_response, clean_response, needs_operator
+    from app.db.models.models import Message, MessageSender
+    from datetime import datetime
+
+    messages_input = data.get("messages", [])
+    knowledge_hint = data.get("knowledge_hint")
+
+    # Build fake Message objects
+    history = []
+    for m in messages_input:
+        msg = Message(
+            id=0,
+            conversation_id=0,
+            sender=MessageSender.client if m["role"] == "client" else MessageSender.bot,
+            text=m["text"],
+            created_at=datetime.utcnow(),
+        )
+        history.append(msg)
+
+    raw = await generate_response(history, knowledge_hint=knowledge_hint)
+    return {
+        "raw": raw,
+        "clean": clean_response(raw),
+        "needs_operator": needs_operator(raw),
+    }
+
+
 @app.get("/api/status")
 async def status():
     """Статус подключений (Telegram, WhatsApp)."""
