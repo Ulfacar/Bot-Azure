@@ -81,18 +81,24 @@ def normalize_word(word: str) -> str:
 async def search_knowledge_base(
     session: AsyncSession,
     question: str,
-    threshold: float = 0.5,
+    threshold: float = 0.75,
+    min_common_keywords: int = 2,
 ) -> KnowledgeBase | None:
-    """Поиск ответа в базе знаний по вопросу."""
+    """Поиск ответа в базе знаний по вопросу.
+
+    Возвращает запись только при высокой уверенности в совпадении.
+    """
     keywords = extract_keywords(question)
     if not keywords:
         return None
 
     keyword_list = keywords.split()
-    # Также нормализуем ключевые слова вопроса
     normalized_question_keywords = set(normalize_word(w) for w in keyword_list)
 
-    # Получаем все активные записи
+    # Слишком короткий вопрос — KB не справится точно
+    if len(normalized_question_keywords) < 2:
+        return None
+
     result = await session.execute(
         select(KnowledgeBase).where(KnowledgeBase.is_active == True)
     )
@@ -101,7 +107,6 @@ async def search_knowledge_base(
     if not entries:
         return None
 
-    # Поиск по совпадению ключевых слов с нормализацией
     best_match = None
     best_score = 0
 
@@ -110,22 +115,16 @@ async def search_knowledge_base(
             continue
 
         entry_keywords = set(entry.keywords.split())
-        # Нормализуем ключевые слова записи
         normalized_entry_keywords = set(normalize_word(w) for w in entry_keywords)
 
-        # Считаем пересечение нормализованных слов
+        if not normalized_entry_keywords:
+            continue
+
+        # Только точные совпадения нормализованных слов (убрали prefix matching — он даёт ложные срабатывания)
         common = normalized_entry_keywords.intersection(normalized_question_keywords)
 
-        # Также проверяем частичное совпадение (начало слова)
-        for eq in normalized_entry_keywords:
-            for qq in normalized_question_keywords:
-                if eq not in common and qq not in common:
-                    # Проверяем совпадение начала слова (минимум 4 буквы)
-                    if len(eq) >= 4 and len(qq) >= 4:
-                        if eq.startswith(qq[:4]) or qq.startswith(eq[:4]):
-                            common.add(eq)
-
-        if not normalized_entry_keywords:
+        # Требуем минимум N совпадающих ключевых слов
+        if len(common) < min_common_keywords:
             continue
 
         score = len(common) / max(len(normalized_entry_keywords), len(normalized_question_keywords))
@@ -135,8 +134,7 @@ async def search_knowledge_base(
             best_match = entry
 
     if best_match:
-        logger.info(f"Найдено в базе знаний (score={best_score:.2f}): '{best_match.question[:50]}...'")
-        # Увеличиваем счётчик использования
+        logger.info(f"KB match (score={best_score:.2f}, entry_id={best_match.id}): '{best_match.question[:80]}'")
         best_match.times_used += 1
         await session.commit()
 

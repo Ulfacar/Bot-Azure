@@ -10,7 +10,6 @@ from app.bot.ai.assistant import (
     extract_category,
     generate_response,
     needs_operator,
-    format_knowledge_answer,
     check_and_format_availability,
     extract_booking_data,
 )
@@ -428,75 +427,76 @@ async def handle_client_message(message: types.Message, session):
     # 5. Показываем "печатает..." пока думаем
     await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
 
-    # 6. СНАЧАЛА ищем ответ в базе знаний
-    knowledge_entry = await search_knowledge_base(session, message.text)
+    # 6. Ищем подсказку в базе знаний (но НЕ отвечаем ей напрямую)
+    knowledge_hint = None
+    history = await get_conversation_history(session, conversation.id)
+    msg_count = len([m for m in history if m.sender == MessageSender.client])
 
-    if knowledge_entry:
-        # Нашли ответ в базе знаний — отвечаем без Claude!
-        response_text = format_knowledge_answer(knowledge_entry.answer)
-        logger.info(f"Ответ из базы знаний (id={knowledge_entry.id})")
-    else:
-        # Не нашли — спрашиваем Claude
-        history = await get_conversation_history(session, conversation.id)
-        previous_context = await get_client_previous_messages(
-            session, client.id, conversation.id
-        )
-        response_text = await generate_response(history, previous_context)
+    # KB используем только для первых сообщений — в середине диалога AI лучше справится с контекстом
+    if msg_count <= 2:
+        knowledge_entry = await search_knowledge_base(session, message.text)
+        if knowledge_entry:
+            knowledge_hint = f"Вопрос: {knowledge_entry.question}\nОтвет: {knowledge_entry.answer}"
+            logger.info(f"KB hint (id={knowledge_entry.id}): '{knowledge_entry.question[:60]}'")
 
-        # Извлекаем категорию из первого ответа AI
-        category = extract_category(response_text)
-        if category and conversation.category == ConversationCategory.general:
-            try:
-                conversation.category = ConversationCategory(category)
-            except ValueError:
-                pass
+    # 7. Генерируем ответ через AI (с подсказкой из KB если есть)
+    previous_context = await get_client_previous_messages(
+        session, client.id, conversation.id
+    )
+    response_text = await generate_response(history, previous_context, knowledge_hint)
 
-        # Проверяем нужен ли менеджер
-        need_operator = needs_operator(response_text)
-        if need_operator:
-            conversation.status = ConversationStatus.needs_operator
-        elif bot_completed(response_text):
-            conversation.status = ConversationStatus.bot_completed
+    # Извлекаем категорию из первого ответа AI
+    category = extract_category(response_text)
+    if category and conversation.category == ConversationCategory.general:
+        try:
+            conversation.category = ConversationCategory(category)
+        except ValueError:
+            pass
 
-        response_text = clean_response(response_text)
+    # Проверяем нужен ли менеджер
+    need_operator = needs_operator(response_text)
+    if need_operator:
+        conversation.status = ConversationStatus.needs_operator
+    elif bot_completed(response_text):
+        conversation.status = ConversationStatus.bot_completed
 
-        # Проверяем доступность через Exely если это booking-диалог
-        # и в сообщениях клиента есть даты
+    response_text = clean_response(response_text)
+
+    # Проверяем доступность через Exely если это booking-диалог
+    if (
+        conversation.category == ConversationCategory.booking
+        or category == "booking"
+    ):
+        try:
+            all_messages = await get_conversation_history(session, conversation.id, limit=20)
+            availability_text = await check_and_format_availability(all_messages)
+            if availability_text:
+                response_text = response_text + "\n\n" + availability_text
+        except Exception as e:
+            logger.error(f"Ошибка проверки Exely: {e}")
+
+    # Если нужен менеджер — отправить уведомление
+    if need_operator:
+        booking_data = None
         if (
             conversation.category == ConversationCategory.booking
             or category == "booking"
         ):
             try:
-                all_messages = await get_conversation_history(session, conversation.id, limit=20)
-                availability_text = await check_and_format_availability(all_messages)
-                if availability_text:
-                    response_text = response_text + "\n\n" + availability_text
+                all_msgs = await get_conversation_history(session, conversation.id, limit=20)
+                booking_data = extract_booking_data(all_msgs)
             except Exception as e:
-                logger.error(f"Ошибка проверки Exely: {e}")
+                logger.error(f"Ошибка извлечения данных бронирования: {e}")
 
-        # Если нужен менеджер — отправить уведомление
-        if need_operator:
-            # Извлекаем данные бронирования если это booking-диалог
-            booking_data = None
-            if (
-                conversation.category == ConversationCategory.booking
-                or category == "booking"
-            ):
-                try:
-                    all_msgs = await get_conversation_history(session, conversation.id, limit=20)
-                    booking_data = extract_booking_data(all_msgs)
-                except Exception as e:
-                    logger.error(f"Ошибка извлечения данных бронирования: {e}")
-
-            await session.commit()
-            await notify_operators_new_request(
-                bot=message.bot,
-                session=session,
-                conversation=conversation,
-                client=client,
-                last_message=message.text,
-                booking_data=booking_data,
-            )
+        await session.commit()
+        await notify_operators_new_request(
+            bot=message.bot,
+            session=session,
+            conversation=conversation,
+            client=client,
+            last_message=message.text,
+            booking_data=booking_data,
+        )
 
     # 7. Сохранить ответ бота
     await save_message(
