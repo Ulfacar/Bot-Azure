@@ -93,6 +93,21 @@ async def test_prompt(request: dict = fastapi.Body(...)):
         )
         history.append(msg)
 
+    # Also try direct call to see if the issue is in generate_response
+    try:
+        direct_resp = await client.chat.completions.create(
+            model=settings.ai_model,
+            max_tokens=800,
+            temperature=0.3,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT[:2000]},
+                {"role": "user", "content": messages_input[0]["text"] if messages_input else "hi"},
+            ],
+        )
+        debug_info["direct_response"] = direct_resp.choices[0].message.content[:200] if direct_resp.choices[0].message.content else "EMPTY"
+    except Exception as e:
+        debug_info["direct_error"] = str(e)
+
     raw = await generate_response(history, knowledge_hint=knowledge_hint)
     return {
         "raw": raw,
