@@ -1,6 +1,7 @@
 import asyncio
 import logging
 
+import fastapi
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -52,16 +53,15 @@ async def health():
 
 
 @app.post("/api/test-prompt")
-async def test_prompt(data: dict):
+async def test_prompt(request: dict = fastapi.Body(...)):
     """Temporary test endpoint — remove after testing."""
     from app.bot.ai.assistant import generate_response, clean_response, needs_operator
     from app.db.models.models import Message, MessageSender
     from datetime import datetime
 
-    messages_input = data.get("messages", [])
-    knowledge_hint = data.get("knowledge_hint")
+    messages_input = request.get("messages", [])
+    knowledge_hint = request.get("knowledge_hint")
 
-    # Build fake Message objects
     history = []
     for m in messages_input:
         msg = Message(
