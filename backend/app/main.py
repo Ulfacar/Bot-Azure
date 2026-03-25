@@ -56,65 +56,45 @@ async def health():
 async def test_prompt(request: dict = fastapi.Body(...)):
     """Temporary test endpoint — remove after testing."""
     from app.bot.ai.assistant import (
-        generate_response, clean_response, needs_operator,
-        get_ai_client, SYSTEM_PROMPT,
+        get_ai_client, SYSTEM_PROMPT, clean_response, needs_operator,
     )
-    from app.db.models.models import Message, MessageSender
-    from datetime import datetime
+    from app.db.models.models import MessageSender
 
     messages_input = request.get("messages", [])
     knowledge_hint = request.get("knowledge_hint")
 
-    # Debug: test OpenRouter directly
     client = get_ai_client()
-    debug_info = {"has_client": client is not None, "model": settings.ai_model}
-    if client:
-        try:
-            test_resp = await client.chat.completions.create(
-                model=settings.ai_model,
-                max_tokens=50,
-                messages=[
-                    {"role": "system", "content": "Reply with OK"},
-                    {"role": "user", "content": "test"},
-                ],
-            )
-            debug_info["openrouter_test"] = test_resp.choices[0].message.content
-        except Exception as e:
-            debug_info["openrouter_error"] = str(e)
+    if not client:
+        return {"error": "No OpenRouter client"}
 
-    history = []
+    # Build messages array directly (bypass generate_response to avoid SQLAlchemy issues)
+    api_messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+    if knowledge_hint:
+        api_messages.append({"role": "system", "content": (
+            f"=== ПОДСКАЗКА ИЗ БАЗЫ ЗНАНИЙ ===\n{knowledge_hint}\n"
+            "Используй если релевантно, иначе игнорируй."
+        )})
+
     for m in messages_input:
-        msg = Message(
-            id=0,
-            conversation_id=0,
-            sender=MessageSender.client if m["role"] == "client" else MessageSender.bot,
-            text=m["text"],
-            created_at=datetime.utcnow(),
-        )
-        history.append(msg)
+        role = "user" if m["role"] == "client" else "assistant"
+        api_messages.append({"role": role, "content": m["text"]})
 
-    # Also try direct call to see if the issue is in generate_response
     try:
-        direct_resp = await client.chat.completions.create(
+        response = await client.chat.completions.create(
             model=settings.ai_model,
             max_tokens=800,
             temperature=0.3,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT[:2000]},
-                {"role": "user", "content": messages_input[0]["text"] if messages_input else "hi"},
-            ],
+            messages=api_messages,
         )
-        debug_info["direct_response"] = direct_resp.choices[0].message.content[:200] if direct_resp.choices[0].message.content else "EMPTY"
+        raw = response.choices[0].message.content or ""
+        return {
+            "raw": raw,
+            "clean": clean_response(raw),
+            "needs_operator": needs_operator(raw),
+        }
     except Exception as e:
-        debug_info["direct_error"] = str(e)
-
-    raw = await generate_response(history, knowledge_hint=knowledge_hint)
-    return {
-        "raw": raw,
-        "clean": clean_response(raw),
-        "needs_operator": needs_operator(raw),
-        "debug": debug_info,
-    }
+        return {"error": str(e)}
 
 
 @app.get("/api/status")
