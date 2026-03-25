@@ -55,12 +55,32 @@ async def health():
 @app.post("/api/test-prompt")
 async def test_prompt(request: dict = fastapi.Body(...)):
     """Temporary test endpoint — remove after testing."""
-    from app.bot.ai.assistant import generate_response, clean_response, needs_operator
+    from app.bot.ai.assistant import (
+        generate_response, clean_response, needs_operator,
+        get_ai_client, SYSTEM_PROMPT,
+    )
     from app.db.models.models import Message, MessageSender
     from datetime import datetime
 
     messages_input = request.get("messages", [])
     knowledge_hint = request.get("knowledge_hint")
+
+    # Debug: test OpenRouter directly
+    client = get_ai_client()
+    debug_info = {"has_client": client is not None, "model": settings.ai_model}
+    if client:
+        try:
+            test_resp = await client.chat.completions.create(
+                model=settings.ai_model,
+                max_tokens=50,
+                messages=[
+                    {"role": "system", "content": "Reply with OK"},
+                    {"role": "user", "content": "test"},
+                ],
+            )
+            debug_info["openrouter_test"] = test_resp.choices[0].message.content
+        except Exception as e:
+            debug_info["openrouter_error"] = str(e)
 
     history = []
     for m in messages_input:
@@ -78,6 +98,7 @@ async def test_prompt(request: dict = fastapi.Body(...)):
         "raw": raw,
         "clean": clean_response(raw),
         "needs_operator": needs_operator(raw),
+        "debug": debug_info,
     }
 
 
