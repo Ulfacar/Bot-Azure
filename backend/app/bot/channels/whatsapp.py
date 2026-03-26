@@ -175,6 +175,19 @@ async def handle_whatsapp_message(
         if not conversation:
             conversation = await create_conversation(session, client.id)
 
+        # 2.1. Приветствие для нового диалога
+        if is_new_conversation:
+            greeting = (
+                "Здравствуйте! Благодарим за обращение в Тон Азур 😊\n"
+                "Я — виртуальный консьерж отеля. "
+                "Помогу с бронированием, расскажу о номерах и услугах.\n\n"
+                "Чем могу помочь?"
+            )
+            await send_whatsapp_message(phone_number, greeting)
+            await save_message(
+                session, conversation.id, MessageSender.bot, greeting
+            )
+
         # 3. Сохранить сообщение клиента
         await save_message(
             session, conversation.id, MessageSender.client, message_text
