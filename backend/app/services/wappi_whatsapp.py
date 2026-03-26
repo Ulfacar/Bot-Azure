@@ -102,6 +102,10 @@ def parse_wappi_webhook(data: dict) -> dict | None:
         или None если это не текстовое сообщение
     """
     try:
+        # Статусы доставки и другие служебные события — игнорируем тихо
+        if "messages" not in data:
+            return None
+
         messages = data.get("messages", [])
         if not messages:
             return None
