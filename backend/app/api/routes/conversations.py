@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select, case, distinct
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from sqlalchemy import delete, func, select, case, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -224,3 +224,37 @@ async def update_conversation(
     await session.commit()
     await session.refresh(conversation)
     return conversation
+
+
+@router.delete("/{conversation_id}", status_code=204)
+async def delete_conversation(
+    conversation_id: int,
+    session: AsyncSession = Depends(get_session),
+    operator: Operator = Depends(get_current_operator),
+):
+    """Удалить один диалог и все его сообщения."""
+    result = await session.execute(
+        select(Conversation).where(Conversation.id == conversation_id)
+    )
+    conversation = result.scalar_one_or_none()
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Диалог не найден")
+
+    await session.execute(delete(Message).where(Message.conversation_id == conversation_id))
+    await session.delete(conversation)
+    await session.commit()
+
+
+@router.post("/delete-batch", status_code=204)
+async def delete_conversations_batch(
+    ids: list[int] = Body(..., embed=True),
+    session: AsyncSession = Depends(get_session),
+    operator: Operator = Depends(get_current_operator),
+):
+    """Массовое удаление диалогов."""
+    if not ids:
+        raise HTTPException(status_code=400, detail="Список ID пуст")
+
+    await session.execute(delete(Message).where(Message.conversation_id.in_(ids)))
+    await session.execute(delete(Conversation).where(Conversation.id.in_(ids)))
+    await session.commit()

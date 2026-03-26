@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { getConversations, getStats, getEfficiency } from "../services/api";
+import { getConversations, getStats, getEfficiency, deleteConversationsBatch } from "../services/api";
 
 const STATUS_LABELS = {
   in_progress: "В процессе",
@@ -42,6 +42,9 @@ export default function ConversationsPage() {
   const [filter, setFilter] = useState(searchParams.get("filter") || "");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState(new Set());
+  const [selectMode, setSelectMode] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const navigate = useNavigate();
 
   const load = async () => {
@@ -57,7 +60,7 @@ export default function ConversationsPage() {
         const effRes = await getEfficiency();
         setEfficiency(effRes.data);
       } catch {
-        // efficiency — не критично, диалоги всё равно покажем
+        // efficiency — не критично
       }
     } catch (err) {
       console.error(err);
@@ -71,13 +74,80 @@ export default function ConversationsPage() {
     return () => clearInterval(interval);
   }, [filter, search]);
 
+  const toggleSelect = (id, e) => {
+    e.stopPropagation();
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selected.size === conversations.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(conversations.map((c) => c.id)));
+    }
+  };
+
+  const handleDelete = async () => {
+    if (selected.size === 0) return;
+    const confirmed = window.confirm(
+      `Удалить ${selected.size} диалог(ов)? Это действие необратимо.`
+    );
+    if (!confirmed) return;
+
+    setDeleting(true);
+    try {
+      await deleteConversationsBatch([...selected]);
+      setSelected(new Set());
+      await load();
+    } catch (err) {
+      console.error(err);
+      alert("Ошибка при удалении");
+    }
+    setDeleting(false);
+  };
+
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelected(new Set());
+  };
+
   return (
     <div className="conversations-page">
       <div className="page-header">
         <h2>Диалоги</h2>
-        <button className="btn-refresh" onClick={load}>
-          Обновить
-        </button>
+        <div className="page-header-actions">
+          {selectMode ? (
+            <>
+              <button className="btn-select-all" onClick={toggleSelectAll}>
+                {selected.size === conversations.length ? "Снять все" : "Выбрать все"}
+              </button>
+              <button
+                className="btn-delete"
+                onClick={handleDelete}
+                disabled={selected.size === 0 || deleting}
+              >
+                {deleting ? "Удаление..." : `Удалить (${selected.size})`}
+              </button>
+              <button className="btn-cancel" onClick={exitSelectMode}>
+                Отмена
+              </button>
+            </>
+          ) : (
+            <>
+              <button className="btn-select-mode" onClick={() => setSelectMode(true)}>
+                Выбрать
+              </button>
+              <button className="btn-refresh" onClick={load}>
+                Обновить
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {stats && (
@@ -142,11 +212,19 @@ export default function ConversationsPage() {
           {conversations.map((conv) => (
             <div
               key={conv.id}
-              className={`conversation-card${conv.status === "needs_operator" ? " needs-operator" : ""}`}
-              onClick={() => navigate(`/chat/${conv.id}`)}
+              className={`conversation-card${conv.status === "needs_operator" ? " needs-operator" : ""}${selected.has(conv.id) ? " selected" : ""}`}
+              onClick={() => (selectMode ? toggleSelect(conv.id, { stopPropagation: () => {} }) : navigate(`/chat/${conv.id}`))}
             >
               <div className="conv-top">
                 <div className="conv-top-left">
+                  {selectMode && (
+                    <input
+                      type="checkbox"
+                      className="conv-checkbox"
+                      checked={selected.has(conv.id)}
+                      onChange={(e) => toggleSelect(conv.id, e)}
+                    />
+                  )}
                   <span className="conv-client">
                     {conv.client?.name || conv.client?.username || `Клиент #${conv.client_id}`}
                   </span>

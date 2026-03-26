@@ -44,6 +44,12 @@ export const getEfficiency = () => api.get("/conversations/stats/efficiency");
 export const updateConversation = (id, data) =>
   api.patch(`/conversations/${id}`, data);
 
+export const deleteConversation = (id) =>
+  api.delete(`/conversations/${id}`);
+
+export const deleteConversationsBatch = (ids) =>
+  api.post("/conversations/delete-batch", { ids });
+
 // --- Messages ---
 export const getMessages = (conversationId) =>
   api.get(`/conversations/${conversationId}/messages/`);
