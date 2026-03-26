@@ -347,8 +347,8 @@ async def handle_operator_message(message: types.Message, session, operator, ope
     # Отправляем ответ клиенту (Telegram или WhatsApp)
     try:
         if client.channel == ChannelType.whatsapp:
-            # Клиент из WhatsApp — отправляем через Meta Cloud API
-            from app.services.meta_whatsapp import send_whatsapp_message
+            # Клиент из WhatsApp — отправляем через wappi.pro или Meta
+            from app.bot.channels.whatsapp import send_whatsapp_message
             success = await send_whatsapp_message(
                 client.channel_user_id, message.text
             )
