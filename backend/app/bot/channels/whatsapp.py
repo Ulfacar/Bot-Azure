@@ -144,6 +144,19 @@ async def wappi_webhook(request: Request):
     return PlainTextResponse("OK")
 
 
+_GREETING_WORDS = {
+    "здравствуйте", "привет", "салам", "добрый день", "добрый вечер",
+    "доброе утро", "хай", "hello", "hi", "hey", "ассалому алейкум",
+    "салам алейкум", "ассаламу алейкум", "саламатсызбы", "саламатсызбы",
+}
+
+
+def _is_greeting(text: str) -> bool:
+    """Проверить, является ли сообщение простым приветствием."""
+    cleaned = text.strip().lower().rstrip("!.?,)")
+    return cleaned in _GREETING_WORDS
+
+
 async def handle_whatsapp_message(
     phone_number: str,
     message_text: str,
@@ -175,8 +188,8 @@ async def handle_whatsapp_message(
         if not conversation:
             conversation = await create_conversation(session, client.id)
 
-        # 2.1. Приветствие для нового диалога
-        if is_new_conversation:
+        # 2.1. Приветствие для нового диалога (только если просто здороваются)
+        if is_new_conversation and _is_greeting(message_text):
             greeting = (
                 "Здравствуйте! Благодарим за обращение в Тон Азур 😊\n"
                 "Я — виртуальный консьерж отеля. "
@@ -187,6 +200,11 @@ async def handle_whatsapp_message(
             await save_message(
                 session, conversation.id, MessageSender.bot, greeting
             )
+            await save_message(
+                session, conversation.id, MessageSender.client, message_text
+            )
+            await session.commit()
+            return  # Не вызываем AI — приветствие уже отправлено
 
         # 3. Сохранить сообщение клиента
         await save_message(
