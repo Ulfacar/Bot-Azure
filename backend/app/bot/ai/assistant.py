@@ -157,9 +157,26 @@ async def generate_response(
     )
 
 
+_OPERATOR_FALLBACK_PHRASES = (
+    "передам менеджеру",
+    "передана менеджеру",
+    "передаю менеджеру",
+    "свяжутся с вами",
+    "свяжется с вами",
+    "менеджер свяжется",
+    "менеджер скоро",
+    "передаю запрос",
+    "передам запрос",
+)
+
+
 def needs_operator(response_text: str) -> bool:
-    """Проверить, нужен ли менеджер (тег в ответе AI)."""
-    return "[НУЖЕН_МЕНЕДЖЕР]" in response_text
+    """Проверить, нужен ли менеджер (тег в ответе AI или фразы-индикаторы)."""
+    if "[НУЖЕН_МЕНЕДЖЕР]" in response_text:
+        return True
+    # Запасная детекция: AI забыл тег, но написал про передачу менеджеру
+    text_lower = response_text.lower()
+    return any(phrase in text_lower for phrase in _OPERATOR_FALLBACK_PHRASES)
 
 
 def bot_completed(response_text: str) -> bool:
