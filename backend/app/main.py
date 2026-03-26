@@ -55,7 +55,9 @@ async def health():
 @app.get("/api/status")
 async def status():
     """Статус подключений (Telegram, WhatsApp)."""
-    from app.services.meta_whatsapp import is_whatsapp_configured
+    from app.bot.channels.whatsapp import is_whatsapp_configured
+    from app.services.wappi_whatsapp import is_wappi_configured
+    from app.services.meta_whatsapp import is_whatsapp_configured as is_meta_configured
     from app.bot.channels.telegram import get_bot
 
     return {
@@ -65,7 +67,8 @@ async def status():
         },
         "whatsapp": {
             "configured": is_whatsapp_configured(),
-            "webhook": "/webhook/whatsapp",
+            "provider": "wappi.pro" if is_wappi_configured() else ("meta" if is_meta_configured() else "none"),
+            "webhook": "/webhook/wappi" if is_wappi_configured() else "/webhook/whatsapp",
         },
     }
 
