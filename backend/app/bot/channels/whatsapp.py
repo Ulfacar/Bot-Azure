@@ -214,8 +214,8 @@ async def handle_whatsapp_message(
         # 3.1. Извлечь и сохранить телефон, если есть
         await extract_and_save_phone(session, client.id, message_text)
 
-        # 4. Если диалог ведёт оператор — пересылаем ему сообщение
-        if conversation.status == ConversationStatus.operator_active:
+        # 4. Если диалог ведёт оператор или ждёт менеджера — пересылаем ему сообщение
+        if conversation.status in (ConversationStatus.operator_active, ConversationStatus.needs_operator):
             if conversation.assigned_operator_id:
                 from app.db.models.models import Operator
                 from app.bot.channels.telegram import get_bot

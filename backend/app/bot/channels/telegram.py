@@ -406,8 +406,8 @@ async def handle_client_message(message: types.Message, session):
     # 3.1. Извлечь и сохранить телефон, если есть
     await extract_and_save_phone(session, client.id, message.text)
 
-    # 4. Если диалог ведёт оператор — уведомить его
-    if conversation.status == ConversationStatus.operator_active:
+    # 4. Если диалог ведёт оператор или ждёт менеджера — уведомить его
+    if conversation.status in (ConversationStatus.operator_active, ConversationStatus.needs_operator):
         if conversation.assigned_operator_id:
             from app.db.models.models import Operator
             op_result = await session.execute(
