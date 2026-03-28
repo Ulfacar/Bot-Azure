@@ -54,6 +54,60 @@ router = Router()
 bot: Bot | None = None
 dp: Dispatcher | None = None
 
+# === Шаблоны быстрых ответов менеджера ===
+MANAGER_TEMPLATES = {
+    "tpl_payment": (
+        "💰 Реквизиты для оплаты:\n\n"
+        "[РЕКВИЗИТЫ]\n\n"
+        "После оплаты, пожалуйста, пришлите скриншот или чек — "
+        "и мы подтвердим бронирование 😊"
+    ),
+    "tpl_confirmed": (
+        "Отличная новость — ваша бронь подтверждена! ✅\n\n"
+        "Мы будем рады видеть вас в Тон Азур. "
+        "Если появятся вопросы до заезда — пишите, всегда на связи 😊"
+    ),
+    "tpl_no_rooms": (
+        "К сожалению, на выбранные даты свободных номеров нет 😔\n\n"
+        "Могу предложить посмотреть ближайшие доступные даты — "
+        "хотите, подберём альтернативный вариант?"
+    ),
+    "tpl_directions": (
+        "🚗 Как добраться до Тон Азур:\n\n"
+        "Мы находимся в 278 км от Бишкека — это примерно 4–4,5 часа на авто.\n\n"
+        "🛫 Трансфер от аэропорта Манас — 10 000 сом.\n"
+        "Аэропорт Тамчы — 146 км, трансфер индивидуально.\n"
+        "Летом — бесплатный трансфер до пляжей.\n\n"
+        "Если нужен трансфер — напишите, организуем! 😊"
+    ),
+    "tpl_cancellation": (
+        "📋 Условия отмены бронирования:\n\n"
+        "• Более чем за 48 часов до заезда — отмена бесплатна.\n"
+        "• Менее чем за 48 часов — предоплата не возвращается.\n\n"
+        "Если есть вопросы — с удовольствием подскажу 😊"
+    ),
+}
+
+
+def _build_operator_reply_keyboard(conversation_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура с шаблонами и кнопкой завершения для менеджера."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="💰 Реквизиты", callback_data=f"tpl_payment:{conversation_id}"),
+            InlineKeyboardButton(text="✅ Подтверждена", callback_data=f"tpl_confirmed:{conversation_id}"),
+        ],
+        [
+            InlineKeyboardButton(text="❌ Нет мест", callback_data=f"tpl_no_rooms:{conversation_id}"),
+            InlineKeyboardButton(text="🚗 Добраться", callback_data=f"tpl_directions:{conversation_id}"),
+        ],
+        [
+            InlineKeyboardButton(text="📋 Условия отмены", callback_data=f"tpl_cancellation:{conversation_id}"),
+        ],
+        [
+            InlineKeyboardButton(text="✅ Завершить диалог", callback_data=f"finish:{conversation_id}"),
+        ],
+    ])
+
 
 @router.message(CommandStart())
 async def handle_start(message: types.Message):
@@ -115,8 +169,8 @@ async def handle_reply_callback(callback: types.CallbackQuery):
     await callback.answer()
     await callback.message.answer(
         f"✍️ Вы взяли диалог #{conversation_id}.\n\n"
-        "Напишите ответ — он будет отправлен гостю.\n"
-        "Для завершения напишите /done"
+        "Напишите ответ или выберите шаблон:",
+        reply_markup=_build_operator_reply_keyboard(conversation_id),
     )
 
 
@@ -187,6 +241,88 @@ async def handle_skip_knowledge_callback(callback: types.CallbackQuery):
         callback.message.text + "\n\n❌ Не сохранено.",
         parse_mode="HTML",
     )
+
+
+@router.callback_query(F.data.startswith("tpl_"))
+async def handle_template_callback(callback: types.CallbackQuery):
+    """Обработка нажатия шаблона быстрого ответа."""
+    # Парсим: "tpl_payment:28" → key="tpl_payment", conv_id=28
+    parts = callback.data.split(":")
+    if len(parts) != 2:
+        await callback.answer("Ошибка", show_alert=True)
+        return
+
+    template_key = parts[0]
+    conversation_id = int(parts[1])
+    operator_telegram_id = str(callback.from_user.id)
+
+    template_text = MANAGER_TEMPLATES.get(template_key)
+    if not template_text:
+        await callback.answer("Шаблон не найден", show_alert=True)
+        return
+
+    async with async_session() as session:
+        operator = await get_operator_by_telegram_id(session, operator_telegram_id)
+        if not operator:
+            await callback.answer("Вы не зарегистрированы как менеджер", show_alert=True)
+            return
+
+        # Убедимся что менеджер привязан к диалогу
+        current_conv = get_operator_replying(operator_telegram_id)
+        if current_conv != conversation_id:
+            set_operator_replying(operator_telegram_id, conversation_id)
+            result = await session.execute(
+                select(Conversation).where(Conversation.id == conversation_id)
+            )
+            conv = result.scalar_one_or_none()
+            if conv:
+                conv.status = ConversationStatus.operator_active
+                conv.assigned_operator_id = operator.id
+                await session.commit()
+
+        # Получаем диалог и клиента
+        result = await session.execute(
+            select(Conversation).where(Conversation.id == conversation_id)
+        )
+        conversation = result.scalar_one_or_none()
+        if not conversation:
+            await callback.answer("Диалог не найден", show_alert=True)
+            return
+
+        result = await session.execute(
+            select(Client).where(Client.id == conversation.client_id)
+        )
+        client = result.scalar_one_or_none()
+        if not client:
+            await callback.answer("Клиент не найден", show_alert=True)
+            return
+
+        # Сохраняем и отправляем
+        await save_message(session, conversation_id, MessageSender.operator, template_text)
+        await session.commit()
+
+        try:
+            if client.channel == ChannelType.whatsapp:
+                from app.bot.channels.whatsapp import send_whatsapp_message
+                success = await send_whatsapp_message(client.channel_user_id, template_text)
+                if not success:
+                    raise Exception("Не удалось отправить в WhatsApp")
+            else:
+                await callback.bot.send_message(
+                    chat_id=client.channel_user_id,
+                    text=template_text,
+                )
+
+            channel_name = "WhatsApp" if client.channel == ChannelType.whatsapp else "Telegram"
+            await callback.answer("✅ Отправлено!")
+            await callback.message.answer(
+                f"✅ Шаблон отправлен гостю ({channel_name})!\n\n"
+                "Можете написать ещё или выбрать другой шаблон:",
+                reply_markup=_build_operator_reply_keyboard(conversation_id),
+            )
+        except Exception as e:
+            logger.error(f"Ошибка отправки шаблона клиенту: {e}")
+            await callback.answer(f"❌ Ошибка: {e}", show_alert=True)
 
 
 @router.callback_query(F.data.startswith("finish:"))
@@ -361,20 +497,11 @@ async def handle_operator_message(message: types.Message, session, operator, ope
                 text=message.text,
             )
 
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="✅ Завершить диалог",
-                    callback_data=f"finish:{conversation_id}"
-                ),
-            ]
-        ])
-
         channel_name = "WhatsApp" if client.channel == ChannelType.whatsapp else "Telegram"
         await message.answer(
             f"✅ Ответ отправлен гостю ({channel_name})!\n\n"
-            "Можете написать ещё сообщение или завершить диалог.",
-            reply_markup=keyboard,
+            "Можете написать ещё или выбрать шаблон:",
+            reply_markup=_build_operator_reply_keyboard(conversation_id),
         )
     except Exception as e:
         logger.error(f"Ошибка отправки сообщения клиенту: {e}")
