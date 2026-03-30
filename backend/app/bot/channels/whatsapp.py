@@ -8,7 +8,9 @@ from fastapi.responses import PlainTextResponse
 
 from app.bot.ai.assistant import (
     bot_completed,
+    check_and_format_availability,
     clean_response,
+    extract_booking_data,
     extract_category,
     generate_response,
     needs_operator,
@@ -250,7 +252,22 @@ async def handle_whatsapp_message(
             previous_context = await get_client_previous_messages(
                 session, client.id, conversation.id
             )
-            response_text = await generate_response(history, previous_context)
+
+            # Подсказка из базы знаний (для первых 2 сообщений)
+            knowledge_hint = None
+            client_msg_count = sum(1 for m in history if m.sender == MessageSender.client)
+            if client_msg_count <= 2:
+                kb_result = await search_knowledge_base(session, message_text)
+                if kb_result:
+                    knowledge_hint = f"Вопрос: {kb_result.question}\nОтвет: {kb_result.answer}"
+
+            # Проверка доступности номеров через Exely PMS
+            all_messages = history + ([type('M', (), {'text': message_text, 'sender': MessageSender.client})()] if not any(m.text == message_text for m in history) else [])
+            availability_text = await check_and_format_availability(all_messages)
+            if availability_text:
+                knowledge_hint = (knowledge_hint or "") + f"\n\n=== ДАННЫЕ ИЗ СИСТЕМЫ БРОНИРОВАНИЯ ===\n{availability_text}\n=== ИСПОЛЬЗУЙ ЭТИ ДАННЫЕ В ОТВЕТЕ ==="
+
+            response_text = await generate_response(history, previous_context, knowledge_hint)
 
             # Извлекаем категорию из первого ответа AI
             category = extract_category(response_text)
@@ -271,6 +288,10 @@ async def handle_whatsapp_message(
 
             # Уведомляем менеджеров если нужно
             if need_operator:
+                # Извлекаем данные бронирования для уведомления
+                all_msgs = await get_conversation_history(session, conversation.id, limit=20)
+                booking_data = extract_booking_data(all_msgs)
+
                 await session.commit()
                 from app.bot.channels.telegram import get_bot
 
@@ -282,6 +303,7 @@ async def handle_whatsapp_message(
                         conversation=conversation,
                         client=client,
                         last_message=message_text,
+                        booking_data=booking_data,
                     )
 
         # 6. Сохранить ответ бота

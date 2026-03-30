@@ -11,6 +11,7 @@ from app.bot.channels.telegram import start_bot, stop_bot
 from app.bot.channels.whatsapp import router as whatsapp_router
 from app.db.database import async_session
 from app.services.conversation import close_stale_conversations
+from app.services.followup import send_followups
 
 logging.basicConfig(level=logging.INFO)
 
@@ -87,11 +88,27 @@ async def auto_close_loop():
             logger.error(f"Ошибка автозакрытия: {e}")
 
 
+async def followup_loop():
+    """Фоновая задача: дожим клиентов которые замолчали (каждые 2 минуты)."""
+    logger = logging.getLogger(__name__)
+    await asyncio.sleep(60)  # Подождать минуту после старта
+    while True:
+        try:
+            async with async_session() as session:
+                sent = await send_followups(session)
+                if sent:
+                    logger.info(f"Дожим: отправлено {sent} напоминаний")
+        except Exception as e:
+            logger.error(f"Ошибка дожима: {e}")
+        await asyncio.sleep(120)  # Каждые 2 минуты
+
+
 @app.on_event("startup")
 async def on_startup():
     """Запуск Telegram бота и автозакрытия в фоне при старте сервера."""
     asyncio.create_task(start_bot())
     asyncio.create_task(auto_close_loop())
+    asyncio.create_task(followup_loop())
 
 
 @app.on_event("shutdown")
