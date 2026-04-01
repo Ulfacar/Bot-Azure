@@ -124,6 +124,7 @@ def get_ai_client() -> AsyncOpenAI | None:
     return AsyncOpenAI(
         base_url="https://openrouter.ai/api/v1",
         api_key=settings.openrouter_api_key,
+        timeout=60.0,
     )
 
 
@@ -202,7 +203,7 @@ async def generate_response(
     return (
         "Извините, сейчас у меня небольшие технические неполадки. "
         "Вы можете позвонить нам: +996 700 588801 или написать чуть позже. "
-        "Менеджер скоро свяжется с вами! [НУЖЕН_МЕНЕДЖЕР]"
+        "Менеджер скоро свяжется с вами!"
     )
 
 

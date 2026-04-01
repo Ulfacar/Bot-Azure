@@ -137,5 +137,5 @@ def parse_wappi_webhook(data: dict) -> dict | None:
         }
 
     except Exception as e:
-        logger.error(f"Ошибка парсинга wappi.pro webhook: {e}")
+        logger.error(f"Ошибка парсинга wappi.pro webhook: {e}, data={data}")
         return None
