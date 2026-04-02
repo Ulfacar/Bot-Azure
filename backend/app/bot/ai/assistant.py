@@ -350,6 +350,7 @@ _PUSHY_PATTERNS = [
 
 def _strip_trailing_questions(text: str) -> str:
     """Убрать навязчивые вопросы-довески в конце ответа."""
+    original = text
     lines = text.rstrip().split("\n")
 
     # Проверяем последние 1-2 строки
@@ -372,7 +373,11 @@ def _strip_trailing_questions(text: str) -> str:
         else:
             break
 
-    return "\n".join(lines)
+    result = "\n".join(lines).strip()
+    # Если после обрезки ничего не осталось — вернуть оригинал
+    if not result:
+        return original
+    return result
 
 
 # --- Извлечение данных бронирования из диалога ---
