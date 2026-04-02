@@ -377,7 +377,19 @@ def _strip_trailing_questions(text: str) -> str:
     # Если после обрезки ничего не осталось — вернуть оригинал
     if not result:
         return original
-    return result
+
+    # Убираем довески внутри последней строки (после точки/эмодзи)
+    result_lines = result.split("\n")
+    last = result_lines[-1]
+    for p in _PUSHY_PATTERNS:
+        idx = last.lower().find(p)
+        if idx > 0:
+            # Обрезаем от довеска до конца строки
+            trimmed = last[:idx].rstrip(" ,.")
+            if len(trimmed) > 10:  # Не обрезать если останется слишком мало
+                result_lines[-1] = trimmed
+                break
+    return "\n".join(result_lines).strip()
 
 
 # --- Извлечение данных бронирования из диалога ---
