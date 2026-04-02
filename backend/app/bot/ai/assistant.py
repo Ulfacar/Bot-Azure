@@ -486,6 +486,117 @@ async def check_and_format_availability(
     return format_availability_for_telegram(options, nights)
 
 
+# --- Программная проверка цен в ответе AI ---
+
+# Правильные цены: {сезон: {тип: цена}}
+_CORRECT_PRICES = {
+    # Сезон 1: 1 фев — 31 мая
+    "s1": {"twin1": 6000, "twin2": 8000, "double": 8000, "sem3": 11000, "sem4": 14000},
+    # Сезон 2: 1 июн — 15 сен
+    "s2": {"twin1": 6800, "twin2": 9000, "double": 9000, "sem3": 12500, "sem4": 15700},
+    # Сезон 3: 16 сен — 15 ноя
+    "s3": {"twin1": 6000, "twin2": 8000, "double": 8000, "sem3": 11000, "sem4": 14000},
+    # Сезон 4: 16 ноя — 31 янв
+    "s4": {"twin1": 4000, "twin2": 6000, "double": 6000, "sem3": 9000, "sem4": 10000},
+}
+
+# Все допустимые цены (чтобы не трогать числа которые не цены)
+_ALL_VALID_PRICES = set()
+for s in _CORRECT_PRICES.values():
+    _ALL_VALID_PRICES.update(s.values())
+
+# Неправильные подмены: {(контекст, неправильная_цена): правильная_цена}
+# Генерируем автоматически: если AI написал цену другого типа рядом с названием номера
+_ROOM_PATTERNS = {
+    "4-мест": "sem4",
+    "4-местн": "sem4",
+    "четырёхмест": "sem4",
+    "четырехмест": "sem4",
+    "3-мест": "sem3",
+    "3-местн": "sem3",
+    "трёхмест": "sem3",
+    "трехмест": "sem3",
+}
+
+_PRICE_IN_TEXT_RE = re.compile(r"(\d[\d\s.,]*\d00)\s*(?:сом|сум|KGS|kgs)")
+
+
+def _get_season(checkin: date) -> str:
+    """Определить сезон по дате."""
+    m, d = checkin.month, checkin.day
+    if m >= 2 and m <= 5:
+        return "s1"
+    if m == 6 or m in (7, 8) or (m == 9 and d <= 15):
+        return "s2"
+    if (m == 9 and d >= 16) or m == 10 or (m == 11 and d <= 15):
+        return "s3"
+    return "s4"
+
+
+def fix_prices_in_response(response_text: str, messages: list[Message]) -> str:
+    """Проверить и исправить неправильные цены в ответе AI."""
+    # Извлекаем дату заезда из диалога (хотя бы одну дату)
+    checkin, checkout = extract_booking_dates(messages)
+    if not checkin:
+        # Может быть одна дата — парсим вручную
+        for msg in messages:
+            if msg.sender == MessageSender.client:
+                for m in _DATE_PATTERNS[0].finditer(msg.text):
+                    day = int(m.group(1))
+                    month = _parse_russian_month(m.group(2))
+                    year = int(m.group(3)) if m.group(3) else datetime.now().year
+                    if month:
+                        try:
+                            checkin = date(year, month, day)
+                            break
+                        except ValueError:
+                            pass
+            if checkin:
+                break
+    if not checkin:
+        return response_text
+
+    season = _get_season(checkin)
+    prices = _CORRECT_PRICES[season]
+
+    text = response_text
+
+    # Ищем упоминания типов номеров и проверяем цены рядом
+    for pattern, room_key in _ROOM_PATTERNS.items():
+        if pattern.lower() not in text.lower():
+            continue
+
+        correct_price = prices[room_key]
+
+        # Ищем все цены в тексте
+        for match in _PRICE_IN_TEXT_RE.finditer(text):
+            price_str = match.group(1).replace(" ", "").replace(",", "").replace(".", "")
+            try:
+                found_price = int(price_str)
+            except ValueError:
+                continue
+
+            # Если цена рядом с названием номера и она неправильная
+            # Проверяем что это вообще цена из нашей таблицы (а не итого за несколько ночей)
+            if found_price in _ALL_VALID_PRICES and found_price != correct_price:
+                # Проверяем что эта цена в контексте именно этого типа номера
+                match_pos = match.start()
+                # Ищем ближайшее упоминание типа номера в пределах 100 символов до цены
+                context_start = max(0, match_pos - 100)
+                context = text[context_start:match_pos].lower()
+                if pattern.lower() in context:
+                    logger.warning(
+                        f"Исправление цены: {pattern} {found_price} → {correct_price} (сезон {season})"
+                    )
+                    # Заменяем только это вхождение
+                    old = match.group(0)
+                    new = old.replace(match.group(1), f"{correct_price:,}".replace(",", " "))
+                    text = text[:match.start()] + new + text[match.end():]
+                    break  # Одна замена за тип, чтобы не сломать позиции
+
+    return text
+
+
 def format_knowledge_answer(answer: str) -> str:
     """Форматировать ответ из базы знаний."""
     return answer.strip()

@@ -9,6 +9,7 @@ from app.bot.ai.assistant import (
     clean_response,
     detect_category_from_text,
     extract_category,
+    fix_prices_in_response,
     generate_response,
     needs_operator,
     check_and_format_availability,
@@ -610,6 +611,9 @@ async def handle_client_message(message: types.Message, session):
         conversation.status = ConversationStatus.bot_completed
 
     response_text = clean_response(response_text)
+
+    # Проверяем и исправляем цены
+    response_text = fix_prices_in_response(response_text, all_messages)
 
     # Если нужен менеджер — отправить уведомление
     if need_operator:

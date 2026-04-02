@@ -15,6 +15,7 @@ from app.bot.ai.assistant import (
     detect_category_from_text,
     extract_booking_data,
     extract_category,
+    fix_prices_in_response,
     generate_response,
     needs_operator,
     format_knowledge_answer,
@@ -386,6 +387,10 @@ async def _handle_whatsapp_message_inner(
                 conversation.status = ConversationStatus.bot_completed
 
             response_text = clean_response(response_text)
+
+            # Проверяем и исправляем цены
+            all_msgs = await get_conversation_history(session, conversation.id, limit=20)
+            response_text = fix_prices_in_response(response_text, all_msgs)
 
             # Уведомляем менеджеров если нужно
             if need_operator:
