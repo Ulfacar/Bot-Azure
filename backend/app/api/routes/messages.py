@@ -101,33 +101,17 @@ async def send_message(
             except Exception as e:
                 logger.error(f"Ошибка отправки в Telegram: {e}")
 
-    # Уведомляем менеджеров в Telegram что диалог обработан из админки
+    # Обновляем уведомление в Telegram — убираем кнопки, пишем "обработано"
     if tg_bot:
         try:
-            from sqlalchemy import select as sa_select
-            result = await session.execute(
-                sa_select(Operator).where(
-                    Operator.telegram_id.isnot(None),
-                    Operator.is_active.is_(True),
-                )
+            from app.services.notification import mark_notification_handled
+            await mark_notification_handled(
+                bot=tg_bot,
+                conversation_id=conversation_id,
+                handler_name=operator.name,
+                source="админки",
             )
-            operators = result.scalars().all()
-            client_name = client.name or "Гость"
-            channel_name = "WhatsApp" if client.channel == ChannelType.whatsapp else "Telegram"
-            for op in operators:
-                if op.id == operator.id:
-                    continue  # Не уведомляем того кто сам отправил
-                try:
-                    await tg_bot.send_message(
-                        chat_id=op.telegram_id,
-                        text=(
-                            f"✅ {operator.name} ответил гостю {client_name} ({channel_name}) "
-                            f"из админки (диалог #{conversation_id})"
-                        ),
-                    )
-                except Exception:
-                    pass
         except Exception as e:
-            logger.error(f"Ошибка уведомления Telegram о действии из админки: {e}")
+            logger.error(f"Ошибка обновления Telegram уведомления: {e}")
 
     return message
