@@ -53,10 +53,10 @@ def _get_season_price(room_type_id: str, checkin: date) -> int | None:
     """Получить цену за ночь по сезону и типу номера."""
     month, day = checkin.month, checkin.day
 
-    # Определяем сезон
-    if (month == 6 and day >= 1) or (month in (7, 8)) or (month == 9 and day <= 15):
+    # Определяем сезон по дате заезда
+    if (month == 6) or (month in (7, 8)) or (month == 9 and day <= 15):
         season = "high"       # 1 июн — 15 сен
-    elif (month >= 2 and month <= 5) or (month == 1 and day == 31):
+    elif month >= 2 and month <= 5:
         season = "mid_spring"  # 1 фев — 31 мая
     elif (month == 9 and day >= 16) or (month == 10) or (month == 11 and day <= 15):
         season = "mid_autumn"  # 16 сен — 15 ноя

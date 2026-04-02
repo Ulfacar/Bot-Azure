@@ -128,7 +128,7 @@ def get_ai_client() -> AsyncOpenAI | None:
     return AsyncOpenAI(
         base_url="https://openrouter.ai/api/v1",
         api_key=settings.openrouter_api_key,
-        timeout=60.0,
+        timeout=30.0,
     )
 
 
@@ -152,7 +152,18 @@ async def generate_response(
             "Менеджер свяжется с вами в ближайшее время."
         )
 
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    # Динамически добавляем текущую дату в промпт
+    now = datetime.now()
+    day_names = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
+    month_names = ["", "января", "февраля", "марта", "апреля", "мая", "июня",
+                   "июля", "августа", "сентября", "октября", "ноября", "декабря"]
+    date_line = (
+        f"\n\n=== ТЕКУЩАЯ ДАТА ===\n"
+        f"Сегодня: {now.day} {month_names[now.month]} {now.year} г., {day_names[now.weekday()]}.\n"
+        f"Используй эту дату для расчётов: «эти выходные», «следующая неделя», «через 2 дня» и т.д.\n"
+        f"=== КОНЕЦ ==="
+    )
+    messages = [{"role": "system", "content": SYSTEM_PROMPT + date_line}]
 
     # Добавляем контекст из предыдущих диалогов (кросс-диалоговая память)
     if previous_context:
@@ -180,9 +191,9 @@ async def generate_response(
         elif msg.sender in (MessageSender.bot, MessageSender.operator):
             messages.append({"role": "assistant", "content": msg.text})
 
-    # Retry logic: попробовать дважды перед fallback
+    # Retry logic: 3 попытки перед fallback
     last_error = None
-    for attempt in range(2):
+    for attempt in range(3):
         try:
             response = await client.chat.completions.create(
                 model=settings.ai_model,
@@ -200,14 +211,18 @@ async def generate_response(
             logger.warning(f"AI вернул пустой ответ (попытка {attempt + 1})")
         except Exception as e:
             last_error = e
-            logger.error(f"Ошибка OpenRouter API (попытка {attempt + 1}): {e}")
+            logger.error(f"Ошибка OpenRouter API (попытка {attempt + 1}/3): {e}")
+            if attempt < 2:
+                import asyncio
+                await asyncio.sleep(1)  # Пауза перед retry
 
-    # Обе попытки провалились — мягкий fallback
-    logger.error(f"AI недоступен после 2 попыток: {last_error}")
+    # Все попытки провалились — fallback + пометка для уведомления менеджера
+    logger.error(f"AI недоступен после 3 попыток: {last_error}")
     return (
-        "Извините, сейчас у меня небольшие технические неполадки. "
-        "Вы можете позвонить нам: +996 700 588801 или написать чуть позже. "
-        "Менеджер скоро свяжется с вами!"
+        "Спасибо за ваше сообщение! Сейчас я передам ваш запрос менеджеру — "
+        "он свяжется с вами в ближайшее время. "
+        "Также вы можете позвонить: +996 700 588801 😊 "
+        "[НУЖЕН_МЕНЕДЖЕР]"
     )
 
 
@@ -253,6 +268,37 @@ def bot_completed(response_text: str) -> bool:
 
 
 _CATEGORY_RE = re.compile(r"\[КАТЕГОРИЯ:(booking|hotel|service|general)\]")
+
+# Ключевые слова для автоматической категоризации по сообщению клиента
+_BOOKING_KEYWORDS = {
+    "забронировать", "бронирован", "бронь", "номер на", "номера на",
+    "заезд", "выезд", "check-in", "check-out", "заселени",
+    "свободн", "есть номер", "есть ли номер", "стоимость номер",
+    "цена номер", "цена за", "прайс", "сколько стоит", "расценк",
+    "на двоих", "на троих", "на четверых", "для двоих",
+    "twin", "double", "family", "семейн",
+}
+_SERVICE_KEYWORDS = {
+    "трансфер", "экскурси", "конференц", "банкет", "мероприят",
+    "корпоратив", "тимбилдинг",
+}
+_HOTEL_KEYWORDS = {
+    "бассейн", "завтрак", "ресторан", "парковк", "wi-fi", "wifi",
+    "где находит", "как добраться", "адрес", "животн", "курени",
+    "заезд во сколько", "выезд во сколько",
+}
+
+
+def detect_category_from_text(text: str) -> str | None:
+    """Определить категорию по тексту сообщения клиента (fallback если AI не дал тег)."""
+    text_lower = text.lower()
+    if any(kw in text_lower for kw in _BOOKING_KEYWORDS):
+        return "booking"
+    if any(kw in text_lower for kw in _SERVICE_KEYWORDS):
+        return "service"
+    if any(kw in text_lower for kw in _HOTEL_KEYWORDS):
+        return "hotel"
+    return None
 
 
 def extract_category(response_text: str) -> str | None:

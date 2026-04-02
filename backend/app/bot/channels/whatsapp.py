@@ -2,7 +2,9 @@
 WhatsApp канал через Meta Cloud API или wappi.pro.
 Обработка входящих сообщений и отправка ответов.
 """
+import asyncio
 import logging
+import time
 from fastapi import APIRouter, Request, Query
 from fastapi.responses import PlainTextResponse
 
@@ -10,6 +12,7 @@ from app.bot.ai.assistant import (
     bot_completed,
     check_and_format_availability,
     clean_response,
+    detect_category_from_text,
     extract_booking_data,
     extract_category,
     generate_response,
@@ -49,6 +52,58 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# --- Debounce: собираем сообщения одного клиента, ждём паузу 1.5с ---
+_message_buffers: dict[str, list[str]] = {}       # phone → [texts]
+_buffer_locks: dict[str, asyncio.Lock] = {}        # phone → Lock
+_buffer_tasks: dict[str, asyncio.Task] = {}        # phone → scheduled Task
+_DEBOUNCE_DELAY = 1.5  # секунд
+
+
+async def _debounced_handle(phone_number: str, profile_name: str):
+    """Вызывается после паузы — обрабатывает все накопленные сообщения как одно."""
+    await asyncio.sleep(_DEBOUNCE_DELAY)
+
+    lock = _buffer_locks.get(phone_number)
+    if not lock:
+        return
+
+    async with lock:
+        messages = _message_buffers.pop(phone_number, [])
+        _buffer_tasks.pop(phone_number, None)
+
+    if not messages:
+        return
+
+    # Склеиваем все сообщения в одно
+    combined_text = "\n".join(messages)
+    logger.info(f"WhatsApp debounce: {phone_number} — {len(messages)} сообщ. объединено")
+
+    await _handle_whatsapp_message_inner(
+        phone_number=phone_number,
+        message_text=combined_text,
+        profile_name=profile_name,
+    )
+
+
+async def _enqueue_message(phone_number: str, message_text: str, profile_name: str):
+    """Добавить сообщение в буфер и (пере)запустить таймер."""
+    if phone_number not in _buffer_locks:
+        _buffer_locks[phone_number] = asyncio.Lock()
+
+    lock = _buffer_locks[phone_number]
+    async with lock:
+        _message_buffers.setdefault(phone_number, []).append(message_text)
+
+        # Отменяем предыдущий таймер
+        old_task = _buffer_tasks.get(phone_number)
+        if old_task and not old_task.done():
+            old_task.cancel()
+
+        # Запускаем новый таймер
+        _buffer_tasks[phone_number] = asyncio.create_task(
+            _debounced_handle(phone_number, profile_name)
+        )
 
 
 def _use_wappi() -> bool:
@@ -166,7 +221,7 @@ async def handle_whatsapp_message(
 ):
     """
     Обработка входящего WhatsApp сообщения.
-    Логика аналогична Telegram боту.
+    Использует debounce — ждёт 1.5с перед обработкой, собирая все сообщения.
     """
     if not message_text.strip():
         return
@@ -174,6 +229,17 @@ async def handle_whatsapp_message(
     if len(message_text) > 4000:
         message_text = message_text[:4000]
 
+    await _enqueue_message(phone_number, message_text, profile_name)
+
+
+async def _handle_whatsapp_message_inner(
+    phone_number: str,
+    message_text: str,
+    profile_name: str,
+):
+    """
+    Реальная обработка WhatsApp сообщения (после debounce).
+    """
     async with async_session() as session:
         # 1. Найти или создать клиента
         client = await get_or_create_client(
@@ -239,6 +305,15 @@ async def handle_whatsapp_message(
             await session.commit()
             return
 
+        # 4.5. Обновляем категорию по тексту клиента (если ещё general)
+        if conversation.category == ConversationCategory.general:
+            text_category = detect_category_from_text(message_text)
+            if text_category:
+                try:
+                    conversation.category = ConversationCategory(text_category)
+                except ValueError:
+                    pass
+
         # 5. Ищем ответ в базе знаний
         knowledge_entry = await search_knowledge_base(session, message_text)
 
@@ -269,8 +344,10 @@ async def handle_whatsapp_message(
 
             response_text = await generate_response(history, previous_context, knowledge_hint)
 
-            # Извлекаем категорию из первого ответа AI
+            # Извлекаем категорию из ответа AI или из текста клиента
             category = extract_category(response_text)
+            if not category:
+                category = detect_category_from_text(message_text)
             if category and conversation.category == ConversationCategory.general:
                 try:
                     conversation.category = ConversationCategory(category)

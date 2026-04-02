@@ -7,6 +7,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from app.bot.ai.assistant import (
     bot_completed,
     clean_response,
+    detect_category_from_text,
     extract_category,
     generate_response,
     needs_operator,
@@ -566,14 +567,22 @@ async def handle_client_message(message: types.Message, session):
             knowledge_hint = f"Вопрос: {knowledge_entry.question}\nОтвет: {knowledge_entry.answer}"
             logger.info(f"KB hint (id={knowledge_entry.id}): '{knowledge_entry.question[:60]}'")
 
+    # 6.5. Проверяем доступность через Exely и передаём в промпт
+    all_messages = await get_conversation_history(session, conversation.id, limit=20)
+    availability_text = await check_and_format_availability(all_messages)
+    if availability_text:
+        knowledge_hint = (knowledge_hint or "") + f"\n\n=== ДАННЫЕ ИЗ СИСТЕМЫ БРОНИРОВАНИЯ ===\n{availability_text}\n=== ИСПОЛЬЗУЙ ЭТИ ДАННЫЕ В ОТВЕТЕ ==="
+
     # 7. Генерируем ответ через AI (с подсказкой из KB если есть)
     previous_context = await get_client_previous_messages(
         session, client.id, conversation.id
     )
     response_text = await generate_response(history, previous_context, knowledge_hint)
 
-    # Извлекаем категорию из первого ответа AI
+    # Извлекаем категорию из ответа AI или из текста клиента
     category = extract_category(response_text)
+    if not category:
+        category = detect_category_from_text(message.text)
     if category and conversation.category == ConversationCategory.general:
         try:
             conversation.category = ConversationCategory(category)
@@ -589,31 +598,14 @@ async def handle_client_message(message: types.Message, session):
 
     response_text = clean_response(response_text)
 
-    # Проверяем доступность через Exely если это booking-диалог
-    if (
-        conversation.category == ConversationCategory.booking
-        or category == "booking"
-    ):
-        try:
-            all_messages = await get_conversation_history(session, conversation.id, limit=20)
-            availability_text = await check_and_format_availability(all_messages)
-            if availability_text:
-                response_text = response_text + "\n\n" + availability_text
-        except Exception as e:
-            logger.error(f"Ошибка проверки Exely: {e}")
-
     # Если нужен менеджер — отправить уведомление
     if need_operator:
         booking_data = None
-        if (
-            conversation.category == ConversationCategory.booking
-            or category == "booking"
-        ):
-            try:
-                all_msgs = await get_conversation_history(session, conversation.id, limit=20)
-                booking_data = extract_booking_data(all_msgs)
-            except Exception as e:
-                logger.error(f"Ошибка извлечения данных бронирования: {e}")
+        try:
+            all_msgs = await get_conversation_history(session, conversation.id, limit=20)
+            booking_data = extract_booking_data(all_msgs)
+        except Exception as e:
+            logger.error(f"Ошибка извлечения данных бронирования: {e}")
 
         await session.commit()
         await notify_operators_new_request(
