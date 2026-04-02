@@ -215,7 +215,13 @@ def _is_greeting(text: str) -> bool:
     return cleaned in _GREETING_WORDS
 
 
-_PRICE_KEYWORDS = {"прайс", "прайс-лист", "расценки", "расценок", "ваши цены", "ваш прайс", "прайс лист"}
+_PRICE_KEYWORDS = {
+    "прайс", "прайс-лист", "прайс лист", "расценки", "расценок",
+    "ваши цены", "ваш прайс", "можно прайс", "скиньте прайс",
+    "ознакомить с ценами", "ознакомиться с ценами", "узнать цены",
+    "стоимость номеров", "стоимость проживания", "цены на номера",
+    "сколько стоят номера", "тарифы",
+}
 PRICE_IMAGE_PATH = "/opt/ton-azure/backend/app/static/price_list.png"
 
 
@@ -381,6 +387,15 @@ async def _handle_whatsapp_message_inner(
 
             # Проверяем нужен ли менеджер
             need_operator = needs_operator(response_text)
+
+            # Программная проверка: если собраны все данные для брони — эскалируем
+            if not need_operator:
+                all_msgs_check = await get_conversation_history(session, conversation.id, limit=20)
+                booking = extract_booking_data(all_msgs_check)
+                if booking.checkin and booking.phone and booking.adults:
+                    need_operator = True
+                    logger.info(f"Авто-эскалация: бронь готова (даты+телефон+гости)")
+
             if need_operator:
                 conversation.status = ConversationStatus.needs_operator
             elif bot_completed(response_text):

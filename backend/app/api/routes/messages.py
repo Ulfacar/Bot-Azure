@@ -81,14 +81,23 @@ async def send_message(
 
     # Отправляем сообщение клиенту в мессенджер
     client = conversation.client
-    tg_bot = get_bot()
-    if client.channel == ChannelType.telegram and tg_bot:
+    if client.channel == ChannelType.whatsapp:
         try:
-            await tg_bot.send_message(
-                chat_id=int(client.channel_user_id),
-                text=data.text,
-            )
+            from app.bot.channels.whatsapp import send_whatsapp_message
+            success = await send_whatsapp_message(client.channel_user_id, data.text)
+            if not success:
+                logger.error(f"Не удалось отправить в WhatsApp: {client.channel_user_id}")
         except Exception as e:
-            logger.error(f"Ошибка отправки в Telegram: {e}")
+            logger.error(f"Ошибка отправки в WhatsApp: {e}")
+    elif client.channel == ChannelType.telegram:
+        tg_bot = get_bot()
+        if tg_bot:
+            try:
+                await tg_bot.send_message(
+                    chat_id=int(client.channel_user_id),
+                    text=data.text,
+                )
+            except Exception as e:
+                logger.error(f"Ошибка отправки в Telegram: {e}")
 
     return message

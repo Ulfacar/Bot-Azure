@@ -605,6 +605,14 @@ async def handle_client_message(message: types.Message, session):
 
     # Проверяем нужен ли менеджер
     need_operator = needs_operator(response_text)
+
+    # Программная проверка: если собраны все данные для брони — эскалируем
+    if not need_operator:
+        booking_check = extract_booking_data(all_messages)
+        if booking_check.checkin and booking_check.phone and booking_check.adults:
+            need_operator = True
+            logger.info(f"Авто-эскалация: бронь готова (даты+телефон+гости)")
+
     if need_operator:
         conversation.status = ConversationStatus.needs_operator
     elif bot_completed(response_text):
