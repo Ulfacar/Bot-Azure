@@ -79,15 +79,15 @@ async def send_wappi_message(to: str, text: str) -> bool:
         return False
 
 
-WAPPI_IMAGE_API = "https://wappi.pro/api/sync/message/image/send"
+WAPPI_IMAGE_API = "https://wappi.pro/api/sync/message/img/send"
 
 
 async def send_wappi_image(to: str, image_path: str, caption: str = "") -> bool:
     """
-    Отправить изображение через wappi.pro API.
+    Отправить изображение через wappi.pro API (base64).
 
     Args:
-        to: Номер получателя
+        to: Номер получателя (только цифры, без @c.us)
         image_path: Путь к файлу изображения на сервере
         caption: Подпись к изображению (опционально)
 
@@ -98,37 +98,45 @@ async def send_wappi_image(to: str, image_path: str, caption: str = "") -> bool:
         logger.error("WhatsApp (wappi.pro) не настроен")
         return False
 
-    recipient = _format_phone(to)
+    import base64
+
+    # wappi img/send принимает номер без @c.us
+    recipient = "".join(filter(str.isdigit, to))
 
     headers = {
         "Authorization": settings.wappi_api_key,
+        "Content-Type": "application/json",
     }
     params = {
         "profile_id": settings.wappi_profile_id,
     }
 
     try:
+        with open(image_path, "rb") as f:
+            b64_data = base64.b64encode(f.read()).decode()
+
+        payload = {
+            "recipient": recipient,
+            "b64_file": b64_data,
+            "mime_type": "image/png",
+        }
+        if caption:
+            payload["caption"] = caption
+
         async with httpx.AsyncClient(timeout=30.0) as client:
-            with open(image_path, "rb") as f:
-                files = {"file": ("price_list.png", f, "image/png")}
-                data = {"recipient": recipient}
-                if caption:
-                    data["caption"] = caption
+            response = await client.post(
+                WAPPI_IMAGE_API,
+                headers=headers,
+                json=payload,
+                params=params,
+            )
 
-                response = await client.post(
-                    WAPPI_IMAGE_API,
-                    headers=headers,
-                    files=files,
-                    data=data,
-                    params=params,
-                )
-
-            if 200 <= response.status_code < 300:
-                logger.info(f"WhatsApp (wappi.pro) изображение отправлено: {response.json()}")
-                return True
-            else:
-                logger.error(f"Ошибка wappi.pro image API: {response.status_code} - {response.text}")
-                return False
+        if 200 <= response.status_code < 300:
+            logger.info(f"WhatsApp (wappi.pro) изображение отправлено: {response.json()}")
+            return True
+        else:
+            logger.error(f"Ошибка wappi.pro image API: {response.status_code} - {response.text}")
+            return False
 
     except Exception as e:
         logger.error(f"Ошибка отправки изображения WhatsApp (wappi.pro): {e}")
