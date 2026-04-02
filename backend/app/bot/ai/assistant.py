@@ -300,9 +300,12 @@ def extract_category(response_text: str) -> str | None:
 
 
 def clean_response(response_text: str) -> str:
-    """Убрать служебные теги из ответа перед отправкой клиенту."""
+    """Убрать служебные теги и исправить частые опечатки AI."""
     text = response_text.replace("[НУЖЕН_МЕНЕДЖЕР]", "").replace("[ЗАВЕРШЕНО]", "")
     text = _CATEGORY_RE.sub("", text)
+    # Исправляем частые опечатки AI
+    text = text.replace("Добравствуйте", "Здравствуйте")
+    text = text.replace("добравствуйте", "здравствуйте")
     text = _strip_trailing_questions(text.strip())
     return text.strip()
 
@@ -654,7 +657,9 @@ def fix_prices_in_response(response_text: str, messages: list[Message]) -> str:
 
 def ensure_room_variants(response_text: str, messages: list[Message]) -> str:
     """Если 4+ гостей и бот предложил только семейный — дописать вариант 2 Twin."""
-    adults = extract_adults_count(messages)
+    # Берём кол-во гостей только из последних 2 сообщений клиента (не из всей истории)
+    recent_client_msgs = [m for m in messages if m.sender == MessageSender.client][-2:]
+    adults = extract_adults_count(recent_client_msgs)
     if not adults or adults < 3:
         return response_text
 
