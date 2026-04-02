@@ -550,6 +550,21 @@ async def handle_client_message(message: types.Message, session):
                     logger.error(f"Ошибка уведомления менеджера: {e}")
         return
 
+    # 4.5. Прайс-лист — отправляем картинку
+    from app.bot.channels.whatsapp import _is_price_request, PRICE_IMAGE_PATH
+    if _is_price_request(message.text):
+        import os
+        if os.path.exists(PRICE_IMAGE_PATH):
+            from aiogram.types import FSInputFile
+            try:
+                photo = FSInputFile(PRICE_IMAGE_PATH)
+                await message.answer_photo(photo, caption="Прайс-лист отеля Тон Азур 😊")
+                await save_message(session, conversation.id, MessageSender.bot, "[Прайс-лист отправлен]")
+                await session.commit()
+                return
+            except Exception as e:
+                logger.error(f"Ошибка отправки прайс-картинки в Telegram: {e}")
+
     # 5. Показываем "печатает..." пока думаем
     await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
 

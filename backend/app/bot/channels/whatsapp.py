@@ -214,6 +214,16 @@ def _is_greeting(text: str) -> bool:
     return cleaned in _GREETING_WORDS
 
 
+_PRICE_KEYWORDS = {"прайс", "прайс-лист", "расценки", "расценок", "ваши цены", "ваш прайс", "прайс лист"}
+PRICE_IMAGE_PATH = "/opt/ton-azure/backend/app/static/price_list.png"
+
+
+def _is_price_request(text: str) -> bool:
+    """Проверить, просит ли клиент прайс-лист."""
+    text_lower = text.strip().lower()
+    return any(kw in text_lower for kw in _PRICE_KEYWORDS)
+
+
 async def handle_whatsapp_message(
     phone_number: str,
     message_text: str,
@@ -311,6 +321,22 @@ async def _handle_whatsapp_message_inner(
                     conversation.category = ConversationCategory(text_category)
                 except ValueError:
                     pass
+
+        # 4.6. Прайс-лист — отправляем картинку
+        if _is_price_request(message_text):
+            import os
+            if os.path.exists(PRICE_IMAGE_PATH):
+                from app.services.wappi_whatsapp import send_wappi_image
+                caption = "Прайс-лист отеля Тон Азур 😊"
+                sent = await send_wappi_image(phone_number, PRICE_IMAGE_PATH, caption)
+                if sent:
+                    await save_message(
+                        session, conversation.id, MessageSender.bot,
+                        "[Прайс-лист отправлен]"
+                    )
+                    await session.commit()
+                    return
+                logger.warning("Не удалось отправить прайс-картинку, fallback на AI")
 
         # 5. Ищем ответ в базе знаний
         knowledge_entry = await search_knowledge_base(session, message_text)

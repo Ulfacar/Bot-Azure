@@ -79,6 +79,62 @@ async def send_wappi_message(to: str, text: str) -> bool:
         return False
 
 
+WAPPI_IMAGE_API = "https://wappi.pro/api/sync/message/image/send"
+
+
+async def send_wappi_image(to: str, image_path: str, caption: str = "") -> bool:
+    """
+    Отправить изображение через wappi.pro API.
+
+    Args:
+        to: Номер получателя
+        image_path: Путь к файлу изображения на сервере
+        caption: Подпись к изображению (опционально)
+
+    Returns:
+        True если отправлено успешно
+    """
+    if not is_wappi_configured():
+        logger.error("WhatsApp (wappi.pro) не настроен")
+        return False
+
+    recipient = _format_phone(to)
+
+    headers = {
+        "Authorization": settings.wappi_api_key,
+    }
+    params = {
+        "profile_id": settings.wappi_profile_id,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            with open(image_path, "rb") as f:
+                files = {"file": ("price_list.png", f, "image/png")}
+                data = {"recipient": recipient}
+                if caption:
+                    data["caption"] = caption
+
+                response = await client.post(
+                    WAPPI_IMAGE_API,
+                    headers=headers,
+                    files=files,
+                    data=data,
+                    params=params,
+                )
+
+            if 200 <= response.status_code < 300:
+                logger.info(f"WhatsApp (wappi.pro) изображение отправлено: {response.json()}")
+                return True
+            else:
+                logger.error(f"Ошибка wappi.pro image API: {response.status_code} - {response.text}")
+                return False
+
+    except Exception as e:
+        logger.error(f"Ошибка отправки изображения WhatsApp (wappi.pro): {e}")
+        return False
+
+
 def parse_wappi_webhook(data: dict) -> dict | None:
     """
     Парсинг входящего сообщения из wappi.pro webhook.
