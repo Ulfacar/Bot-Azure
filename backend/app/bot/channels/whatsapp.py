@@ -260,8 +260,6 @@ async def _handle_whatsapp_message_inner(
         if is_new_conversation and _is_greeting(message_text):
             greeting = (
                 "Здравствуйте! Благодарим за обращение в Тон Азур 😊\n"
-                "Я — виртуальный консьерж отеля. "
-                "Помогу с бронированием, расскажу о номерах и услугах.\n\n"
                 "Чем могу помочь?"
             )
             await send_whatsapp_message(phone_number, greeting)
