@@ -8,6 +8,7 @@ from app.bot.ai.assistant import (
     bot_completed,
     clean_response,
     detect_category_from_text,
+    ensure_room_variants,
     extract_category,
     fix_prices_in_response,
     generate_response,
@@ -620,8 +621,9 @@ async def handle_client_message(message: types.Message, session):
 
     response_text = clean_response(response_text)
 
-    # Проверяем и исправляем цены
+    # Проверяем и исправляем цены + добавляем варианты
     response_text = fix_prices_in_response(response_text, all_messages)
+    response_text = ensure_room_variants(response_text, all_messages)
 
     # Если нужен менеджер — отправить уведомление
     if need_operator:

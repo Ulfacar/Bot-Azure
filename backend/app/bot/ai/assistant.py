@@ -303,7 +303,62 @@ def clean_response(response_text: str) -> str:
     """Убрать служебные теги из ответа перед отправкой клиенту."""
     text = response_text.replace("[НУЖЕН_МЕНЕДЖЕР]", "").replace("[ЗАВЕРШЕНО]", "")
     text = _CATEGORY_RE.sub("", text)
+    text = _strip_trailing_questions(text.strip())
     return text.strip()
+
+
+# Довески-вопросы которые нужно обрезать
+_PUSHY_PATTERNS = [
+    "интересует бронирование",
+    "интересуют подробности",
+    "интересуют какие-то",
+    "интересует какой-то",
+    "хотите забронировать",
+    "хотите узнать наличие",
+    "хотите уточнить",
+    "хотите посмотреть",
+    "хотите обсудить",
+    "устраивает такой вариант",
+    "устраивает?",
+    "могу ещё чем-то помочь",
+    "могу еще чем-то помочь",
+    "могу помочь с чем-то",
+    "нужен трансфер",
+    "интересуют экскурсии",
+    "какой вариант вам",
+    "какой предпочтительнее",
+    "хотите узнать больше",
+    "есть ли у вас вопросы",
+    "если есть вопросы",
+    "чем могу быть полезен",
+]
+
+
+def _strip_trailing_questions(text: str) -> str:
+    """Убрать навязчивые вопросы-довески в конце ответа."""
+    lines = text.rstrip().split("\n")
+
+    # Проверяем последние 1-2 строки
+    for _ in range(2):
+        if not lines:
+            break
+        last_line = lines[-1].strip()
+        if not last_line:
+            lines.pop()
+            continue
+
+        last_lower = last_line.lower()
+        is_pushy = any(p in last_lower for p in _PUSHY_PATTERNS)
+
+        if is_pushy:
+            lines.pop()
+            # Убираем пустые строки в конце
+            while lines and not lines[-1].strip():
+                lines.pop()
+        else:
+            break
+
+    return "\n".join(lines)
 
 
 # --- Извлечение данных бронирования из диалога ---
@@ -595,6 +650,56 @@ def fix_prices_in_response(response_text: str, messages: list[Message]) -> str:
                     break  # Одна замена за тип, чтобы не сломать позиции
 
     return text
+
+
+def ensure_room_variants(response_text: str, messages: list[Message]) -> str:
+    """Если 4+ гостей и бот предложил только семейный — дописать вариант 2 Twin."""
+    adults = extract_adults_count(messages)
+    if not adults or adults < 3:
+        return response_text
+
+    text_lower = response_text.lower()
+
+    # Если уже есть варианты (два типа номеров упомянуты) — не трогаем
+    has_twin = "twin" in text_lower
+    has_family = "семейн" in text_lower
+    if has_twin and has_family:
+        return response_text
+
+    # Определяем сезон для цены
+    checkin = None
+    for msg in messages:
+        if msg.sender == MessageSender.client:
+            for m in _DATE_PATTERNS[0].finditer(msg.text):
+                day_val = int(m.group(1))
+                month_val = _parse_russian_month(m.group(2))
+                year_val = int(m.group(3)) if m.group(3) else datetime.now().year
+                if month_val:
+                    try:
+                        checkin = date(year_val, month_val, day_val)
+                        break
+                    except ValueError:
+                        pass
+        if checkin:
+            break
+
+    if not checkin:
+        return response_text
+
+    season = _get_season(checkin)
+    prices = _CORRECT_PRICES[season]
+
+    if adults == 3 and has_family and not has_twin:
+        twin_price = prices["twin2"]
+        response_text += f"\n\nТакже можно рассмотреть: Twin + доп. место ({twin_price:,} + 3 000 сом/сутки).".replace(",", " ")
+    elif adults >= 4 and has_family and not has_twin:
+        twin_price = prices["twin2"]
+        response_text += f"\n\nТакже можно рассмотреть: 2 номера Twin по {twin_price:,} сом/сутки каждый.".replace(",", " ")
+    elif adults >= 4 and has_twin and not has_family:
+        fam_price = prices["sem4"]
+        response_text += f"\n\nТакже есть вариант: Семейный 4-местный за {fam_price:,} сом/сутки.".replace(",", " ")
+
+    return response_text
 
 
 def format_knowledge_answer(answer: str) -> str:

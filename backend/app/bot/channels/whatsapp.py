@@ -13,6 +13,7 @@ from app.bot.ai.assistant import (
     check_and_format_availability,
     clean_response,
     detect_category_from_text,
+    ensure_room_variants,
     extract_booking_data,
     extract_category,
     fix_prices_in_response,
@@ -403,9 +404,10 @@ async def _handle_whatsapp_message_inner(
 
             response_text = clean_response(response_text)
 
-            # Проверяем и исправляем цены
+            # Проверяем и исправляем цены + добавляем варианты
             all_msgs = await get_conversation_history(session, conversation.id, limit=20)
             response_text = fix_prices_in_response(response_text, all_msgs)
+            response_text = ensure_room_variants(response_text, all_msgs)
 
             # Уведомляем менеджеров если нужно
             if need_operator:
