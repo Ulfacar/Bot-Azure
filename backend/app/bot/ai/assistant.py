@@ -301,14 +301,47 @@ def extract_category(response_text: str) -> str | None:
     return match.group(1) if match else None
 
 
+_SEASON_PHRASES = [
+    # Точные фразы для замены (порядок важен — длинные первые)
+    "(высокий сезон)", "(Высокий сезон)", "(период высокого сезона)",
+    "(Сезон 1)", "(Сезон 2)", "(Сезон 3)", "(Сезон 4)",
+    "(сезон 1)", "(сезон 2)", "(сезон 3)", "(сезон 4)",
+    "(Сезон 1, февраль-май)", "(Сезон 2, июнь-сентябрь)",
+    "(весенний тариф)", "(сезон высокий)",
+    "Сезон 1,", "Сезон 2,", "Сезон 3,", "Сезон 4,",
+    "высокий сезон,", "высокий сезон.", "высокий сезон)",
+    "Это период высокого сезона.", "Это высокий сезон.",
+    "В этот период действует весенний тариф.",
+]
+
+
 def clean_response(response_text: str) -> str:
-    """Убрать служебные теги и исправить частые опечатки AI."""
+    """Убрать служебные теги, сезоны и исправить частые опечатки AI."""
     text = response_text.replace("[НУЖЕН_МЕНЕДЖЕР]", "").replace("[ЗАВЕРШЕНО]", "")
     text = _CATEGORY_RE.sub("", text)
     # Исправляем частые опечатки AI
     text = text.replace("Добравствуйте", "Здравствуйте")
     text = text.replace("добравствуйте", "здравствуйте")
-    text = _strip_trailing_questions(text.strip())
+    # Убираем упоминания сезонов из ответа (кроме прайс-таблицы)
+    if "Сезон фев-май" not in text:
+        for phrase in _SEASON_PHRASES:
+            text = text.replace(phrase, "")
+        text = re.sub(r"\s{2,}", " ", text)
+        text = text.replace(" ,", ",").replace(" .", ".").replace("  ", " ")
+    # Удаляем навязчивые фразы по regex ДО strip
+    _REMOVE_RX = [
+        r"[Уу]страивает[^.!?\n]*\?",
+        r"[Хх]отите\s+(?:забронировать|уточнить|подробнее|узнать|обсудить)[^.!?\n]*\?",
+        r"[Мм]огу\s+(?:забронировать|оформить|помочь|передать)[^.!?\n]*[.!]",
+        r"[Ии]нтересует\s+бронирование\??",
+        r"[Вв]сё верно\??",
+        r"[Кк]акой\s+(?:вариант|предпочт)[^.!?\n]*\?",
+        r"[Чч]то\s+предпочт[^.!?\n]*\?",
+    ]
+    for pat in _REMOVE_RX:
+        text = re.sub(pat, "", text)
+    text = re.sub(r"\s{2,}", " ", text).strip()
+    text = _strip_trailing_questions(text)
     return text.strip()
 
 
@@ -353,6 +386,12 @@ _PUSHY_PATTERNS = [
     "какой вариант",
     "что выберете",
     "что предпочт",
+    "устраивает?",
+    "устраивает ",
+    "могу передать",
+    "могу оформить",
+    "могу забронир",
+    "хотите забронир",
 ]
 
 
@@ -386,18 +425,11 @@ def _strip_trailing_questions(text: str) -> str:
     if not result:
         return original
 
-    # Убираем довески внутри последней строки (после точки/эмодзи)
-    result_lines = result.split("\n")
-    last = result_lines[-1]
-    for p in _PUSHY_PATTERNS:
-        idx = last.lower().find(p)
-        if idx > 0:
-            # Обрезаем от довеска до конца строки
-            trimmed = last[:idx].rstrip(" ,.")
-            if len(trimmed) > 10:  # Не обрезать если останется слишком мало
-                result_lines[-1] = trimmed
-                break
-    return "\n".join(result_lines).strip()
+    # Убираем конкретные фразы-довески напрямую
+    # Regex удаление уже выполнено в clean_response
+    result = re.sub(r"\s{2,}", " ", result).strip()
+
+    return result if len(result) > 10 else original
 
 
 # --- Извлечение данных бронирования из диалога ---
