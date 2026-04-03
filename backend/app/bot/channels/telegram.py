@@ -170,7 +170,8 @@ async def handle_reply_callback(callback: types.CallbackQuery):
     await callback.answer()
     await callback.message.answer(
         f"✍️ Вы взяли диалог #{conversation_id}.\n\n"
-        "Напишите ответ или выберите шаблон:",
+        "Просто напишите сообщение — оно уйдёт гостю.\n"
+        "Или выберите готовый шаблон:",
         reply_markup=_build_operator_reply_keyboard(conversation_id),
     )
 

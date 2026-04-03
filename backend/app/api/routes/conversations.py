@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 from app.api.schemas import ConversationOut, ConversationUpdate
 from app.core.auth import get_current_operator
 from app.db.database import get_session
-from app.db.models.models import Client, Conversation, ConversationStatus, Message, MessageSender, Operator
+from app.db.models.models import Booking, Client, Conversation, ConversationStatus, KnowledgeBase, Message, MessageSender, Operator
 
 router = APIRouter(prefix="/conversations", tags=["Conversations"])
 
@@ -240,6 +240,8 @@ async def delete_conversation(
     if not conversation:
         raise HTTPException(status_code=404, detail="Диалог не найден")
 
+    await session.execute(delete(KnowledgeBase).where(KnowledgeBase.conversation_id == conversation_id))
+    await session.execute(delete(Booking).where(Booking.conversation_id == conversation_id))
     await session.execute(delete(Message).where(Message.conversation_id == conversation_id))
     await session.delete(conversation)
     await session.commit()
@@ -255,6 +257,8 @@ async def delete_conversations_batch(
     if not ids:
         raise HTTPException(status_code=400, detail="Список ID пуст")
 
+    await session.execute(delete(KnowledgeBase).where(KnowledgeBase.conversation_id.in_(ids)))
+    await session.execute(delete(Booking).where(Booking.conversation_id.in_(ids)))
     await session.execute(delete(Message).where(Message.conversation_id.in_(ids)))
     await session.execute(delete(Conversation).where(Conversation.id.in_(ids)))
     await session.commit()

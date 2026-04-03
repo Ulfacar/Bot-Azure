@@ -1,8 +1,12 @@
 import asyncio
 import logging
 
-from fastapi import FastAPI
+from pathlib import Path
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.rate_limit import RateLimitMiddleware
@@ -41,15 +45,29 @@ app.include_router(api_router)
 app.include_router(whatsapp_router)  # WhatsApp webhook
 
 
-@app.get("/")
-async def root():
-    return {"status": "ok", "app": settings.app_name}
-
-
 @app.get("/health")
 async def health():
     """Health check для Railway / мониторинга."""
     return {"status": "ok"}
+
+
+# --- Админка (SPA) ---
+_STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+
+if _STATIC_DIR.is_dir():
+    app.mount("/assets", StaticFiles(directory=_STATIC_DIR / "assets"), name="static-assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(request: Request, full_path: str):
+        """Отдаём index.html для всех не-API маршрутов (SPA fallback)."""
+        file = _STATIC_DIR / full_path
+        if file.is_file():
+            return FileResponse(file)
+        return FileResponse(_STATIC_DIR / "index.html")
+else:
+    @app.get("/")
+    async def root():
+        return {"status": "ok", "app": settings.app_name}
 
 
 
