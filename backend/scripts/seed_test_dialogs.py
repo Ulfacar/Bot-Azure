@@ -170,7 +170,7 @@ async def seed():
                 },
                 messages=[
                     {"sender": MessageSender.client, "text": "Привет! Какие у вас цены на август?", "created_at": ts(15)},
-                    {"sender": MessageSender.bot, "text": "Здравствуйте! Благодарим за обращение в Тон Азур 😊 Август — высокий сезон, вот наши цены:\n\n• Single Comfort — 6,800 KGS/ночь\n• Twin/Double — 9,000 KGS/ночь\n• Triple — 12,500 KGS/ночь\n• Family — 15,700 KGS/ночь\n\nЗавтрак включён в стоимость. Подскажите, на какие даты планируете?", "created_at": ts(14)},
+                    {"sender": MessageSender.bot, "text": "Здравствуйте! Благодарим за обращение в Тон Азур 😊 Вот наши цены на август:\n\n• Twin/Double (1 чел) — 6 800 сом/сутки\n• Twin/Double (2 чел) — 9 000 сом/сутки\n• Семейный 3-местный — 12 500 сом/сутки\n• Семейный 4-местный — 15 700 сом/сутки\n\nЗавтрак включён 😊", "created_at": ts(14)},
                     {"sender": MessageSender.client, "text": "А есть скидки если на 10 дней?", "created_at": ts(10)},
                     {"sender": MessageSender.bot, "text": "При длительном проживании возможна индивидуальная скидка 10-20%. Точные условия зависят от дат и загрузки. Подскажите конкретные даты, и я проверю наличие? 😊", "created_at": ts(9)},
                     {"sender": MessageSender.client, "text": "1-10 августа, на двоих", "created_at": ts(5)},
