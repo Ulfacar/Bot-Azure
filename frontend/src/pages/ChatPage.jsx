@@ -24,6 +24,54 @@ const SENDER_LABELS = {
   operator: "Менеджер",
 };
 
+const QUICK_TEMPLATES = [
+  {
+    key: "payment",
+    label: "💰 Реквизиты",
+    text:
+      "💰 Реквизиты для оплаты:\n\n" +
+      "[РЕКВИЗИТЫ]\n\n" +
+      "После оплаты, пожалуйста, пришлите скриншот или чек — " +
+      "и мы подтвердим бронирование 😊",
+  },
+  {
+    key: "confirmed",
+    label: "✅ Подтверждена",
+    text:
+      "Отличная новость — ваша бронь подтверждена! ✅\n\n" +
+      "Мы будем рады видеть вас в Тон Азур. " +
+      "Если появятся вопросы до заезда — пишите, всегда на связи 😊",
+  },
+  {
+    key: "no_rooms",
+    label: "❌ Нет мест",
+    text:
+      "К сожалению, на выбранные даты свободных номеров нет 😔\n\n" +
+      "Могу предложить посмотреть ближайшие доступные даты — " +
+      "хотите, подберём альтернативный вариант?",
+  },
+  {
+    key: "directions",
+    label: "🚗 Добраться",
+    text:
+      "🚗 Как добраться до Тон Азур:\n\n" +
+      "Мы находимся в 278 км от Бишкека — это примерно 4–4,5 часа на авто.\n\n" +
+      "🛫 Трансфер от аэропорта Манас — 10 000 сом.\n" +
+      "Аэропорт Тамчы — 146 км, трансфер индивидуально.\n" +
+      "Летом — бесплатный трансфер до пляжей.\n\n" +
+      "Если нужен трансфер — напишите, организуем! 😊",
+  },
+  {
+    key: "cancellation",
+    label: "📋 Условия отмены",
+    text:
+      "📋 Условия отмены бронирования:\n\n" +
+      "• Более чем за 48 часов до заезда — отмена бесплатна.\n" +
+      "• Менее чем за 48 часов — предоплата не возвращается.\n\n" +
+      "Если есть вопросы — с удовольствием подскажу 😊",
+  },
+];
+
 export default function ChatPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -78,6 +126,18 @@ export default function ChatPage() {
     try {
       await sendMessage(id, text.trim());
       setText("");
+      await loadData();
+    } catch (err) {
+      console.error(err);
+    }
+    setSending(false);
+  };
+
+  const handleTemplate = async (tpl) => {
+    if (sending) return;
+    setSending(true);
+    try {
+      await sendMessage(id, tpl.text);
       await loadData();
     } catch (err) {
       console.error(err);
@@ -217,18 +277,33 @@ export default function ChatPage() {
           </div>
 
           {conversation.status !== "closed" && (
-            <form className="message-form" onSubmit={handleSend}>
-              <input
-                type="text"
-                placeholder="Написать клиенту..."
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                disabled={sending}
-              />
-              <button type="submit" disabled={sending || !text.trim()}>
-                Отправить
-              </button>
-            </form>
+            <div className="chat-input-area">
+              <div className="quick-templates">
+                {QUICK_TEMPLATES.map((tpl) => (
+                  <button
+                    key={tpl.key}
+                    className="btn-template"
+                    onClick={() => handleTemplate(tpl)}
+                    disabled={sending}
+                    title={tpl.text}
+                  >
+                    {tpl.label}
+                  </button>
+                ))}
+              </div>
+              <form className="message-form" onSubmit={handleSend}>
+                <input
+                  type="text"
+                  placeholder="Написать клиенту..."
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  disabled={sending}
+                />
+                <button type="submit" disabled={sending || !text.trim()}>
+                  Отправить
+                </button>
+              </form>
+            </div>
           )}
         </div>
 
