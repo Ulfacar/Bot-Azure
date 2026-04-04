@@ -59,10 +59,12 @@ async def get_or_create_client(
 
 
 async def get_active_conversation(
-    session: AsyncSession, client_id: int
+    session: AsyncSession, client_id: int, reopen_hours: int = 24
 ) -> Conversation | None:
     """Найти активный (незакрытый) диалог клиента.
-    bot_completed и closed считаются завершёнными — для нового сообщения создаётся новый диалог."""
+    bot_completed считается завершённым.
+    closed в окне reopen_hours — переоткрывается (гость вернулся)."""
+    # 1. Ищем активный диалог
     result = await session.execute(
         select(Conversation)
         .where(
@@ -76,7 +78,29 @@ async def get_active_conversation(
         .order_by(Conversation.updated_at.desc())
         .limit(1)
     )
-    return result.scalar_one_or_none()
+    active = result.scalar_one_or_none()
+    if active:
+        return active
+
+    # 2. Ищем недавно закрытый диалог (в окне reopen_hours)
+    cutoff = datetime.utcnow() - timedelta(hours=reopen_hours)
+    result = await session.execute(
+        select(Conversation)
+        .where(
+            Conversation.client_id == client_id,
+            Conversation.status == ConversationStatus.closed,
+            Conversation.updated_at >= cutoff,
+        )
+        .order_by(Conversation.updated_at.desc())
+        .limit(1)
+    )
+    closed_conv = result.scalar_one_or_none()
+    if closed_conv:
+        closed_conv.status = ConversationStatus.in_progress
+        await session.commit()
+        return closed_conv
+
+    return None
 
 
 async def create_conversation(

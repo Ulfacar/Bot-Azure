@@ -96,3 +96,25 @@ class MessageOut(BaseModel):
 
 class MessageCreate(BaseModel):
     text: str = Field(..., min_length=1, max_length=4000)
+
+
+# --- Notes ---
+
+class NoteCreate(BaseModel):
+    phone: str = Field(..., min_length=5, max_length=50)
+    text: str = Field(..., min_length=1, max_length=2000)
+
+
+class NoteUpdate(BaseModel):
+    text: str = Field(..., min_length=1, max_length=2000)
+
+
+class NoteOut(BaseModel):
+    id: int
+    phone: str
+    text: str
+    added_by_id: Optional[int]
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}

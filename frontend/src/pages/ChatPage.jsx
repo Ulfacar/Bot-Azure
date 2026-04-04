@@ -8,6 +8,9 @@ import {
   updateConversation,
   getTrainSuggestion,
   trainFromConversation,
+  getNotesByClient,
+  createNote,
+  deleteNote,
 } from "../services/api";
 
 const STATUS_LABELS = {
@@ -85,6 +88,9 @@ export default function ChatPage() {
   const [trainAnswer, setTrainAnswer] = useState("");
   const [trainSaving, setTrainSaving] = useState(false);
   const [trainSuccess, setTrainSuccess] = useState(false);
+  const [notes, setNotes] = useState([]);
+  const [noteText, setNoteText] = useState("");
+  const [noteSaving, setNoteSaving] = useState(false);
   const messagesEnd = useRef(null);
 
   const loadData = async () => {
@@ -96,13 +102,20 @@ export default function ChatPage() {
       setConversation(convRes.data);
       setMessages(msgRes.data);
 
-      // Загрузить историю обращений клиента
+      // Загрузить историю обращений клиента и заметки
       if (convRes.data?.client_id) {
         const allConvs = await getConversations();
         const clientConvs = allConvs.data.filter(
           (c) => c.client_id === convRes.data.client_id
         );
         setClientConversations(clientConvs);
+
+        try {
+          const notesRes = await getNotesByClient(convRes.data.client_id);
+          setNotes(notesRes.data);
+        } catch {
+          setNotes([]);
+        }
       }
     } catch {
       navigate("/");
@@ -203,6 +216,33 @@ export default function ChatPage() {
       console.error(err);
     }
     setTrainSaving(false);
+  };
+
+  const handleAddNote = async () => {
+    if (!noteText.trim() || noteSaving) return;
+    const phone =
+      client?.phone ||
+      (client?.channel === "whatsapp" ? client?.channel_user_id : null);
+    if (!phone) return;
+    setNoteSaving(true);
+    try {
+      await createNote(phone, noteText.trim());
+      setNoteText("");
+      const notesRes = await getNotesByClient(conversation.client_id);
+      setNotes(notesRes.data);
+    } catch (err) {
+      console.error(err);
+    }
+    setNoteSaving(false);
+  };
+
+  const handleDeleteNote = async (noteId) => {
+    try {
+      await deleteNote(noteId);
+      setNotes(notes.filter((n) => n.id !== noteId));
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   if (!conversation) return <p className="loading">Загрузка...</p>;
@@ -360,6 +400,45 @@ export default function ChatPage() {
                 ))}
             </div>
           )}
+
+          <div className="client-notes">
+            <span className="client-label">Заметки менеджера</span>
+            {notes.length > 0 ? (
+              notes.map((note) => (
+                <div key={note.id} className="note-item">
+                  <div className="note-text">{note.text}</div>
+                  <div className="note-meta">
+                    {new Date(note.created_at).toLocaleDateString("ru-RU")}
+                    <button
+                      className="note-delete"
+                      onClick={() => handleDeleteNote(note.id)}
+                      title="Удалить заметку"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="note-empty">Нет заметок</div>
+            )}
+            {(client?.phone || client?.channel === "whatsapp") && (
+              <div className="note-add">
+                <textarea
+                  value={noteText}
+                  onChange={(e) => setNoteText(e.target.value)}
+                  placeholder="Добавить заметку (звонок, бронь и т.д.)..."
+                  rows={2}
+                />
+                <button
+                  onClick={handleAddNote}
+                  disabled={noteSaving || !noteText.trim()}
+                >
+                  {noteSaving ? "..." : "Добавить"}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

@@ -995,6 +995,93 @@ body {
   font-size: 12px;
 }
 
+/* --- Client Notes (Заметки менеджера) --- */
+
+.client-notes {
+  margin-top: 16px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.note-item {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.note-text {
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.note-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.note-delete {
+  background: none;
+  border: none;
+  color: var(--danger);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.note-delete:hover {
+  opacity: 0.7;
+}
+
+.note-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+.note-add {
+  margin-top: 8px;
+}
+
+.note-add textarea {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.note-add button {
+  margin-top: 4px;
+  width: 100%;
+  padding: 6px;
+  background: var(--warning);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.note-add button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.note-add button:hover:not(:disabled) {
+  background: #d97706;
+}
+
 /* --- Knowledge Page --- */
 
 .knowledge-page {

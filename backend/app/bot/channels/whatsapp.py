@@ -374,7 +374,14 @@ async def _handle_whatsapp_message_inner(
             if availability_text:
                 knowledge_hint = (knowledge_hint or "") + f"\n\n=== ДАННЫЕ ИЗ СИСТЕМЫ БРОНИРОВАНИЯ ===\n{availability_text}\n=== ИСПОЛЬЗУЙ ЭТИ ДАННЫЕ В ОТВЕТЕ ==="
 
-            response_text = await generate_response(history, previous_context, knowledge_hint)
+            # Загружаем заметки менеджера для этого номера
+            from app.services.notes import get_notes_for_phone
+            manager_notes_list = await get_notes_for_phone(session, phone_number)
+            notes_text = "\n".join(
+                f"[{n.created_at.strftime('%d.%m')}] {n.text}" for n in manager_notes_list
+            ) if manager_notes_list else None
+
+            response_text = await generate_response(history, previous_context, knowledge_hint, manager_notes=notes_text)
 
             # Извлекаем категорию из ответа AI или из текста клиента
             category = extract_category(response_text)

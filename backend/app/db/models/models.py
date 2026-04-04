@@ -150,3 +150,21 @@ class KnowledgeBase(Base):
     updated_at = Column(DateTime, default=now_bishkek, onupdate=now_bishkek)
 
     added_by = relationship("Operator")
+
+
+class ClientNote(Base):
+    """Заметка менеджера о клиенте (привязана к номеру телефона).
+
+    Используется для передачи контекста боту о взаимодействиях
+    вне чата (звонки, визиты, брони через Exely и т.д.).
+    """
+    __tablename__ = "client_notes"
+
+    id = Column(Integer, primary_key=True)
+    phone = Column(String(50), nullable=False, index=True)
+    text = Column(Text, nullable=False)
+    added_by_id = Column(Integer, ForeignKey("operators.id"), nullable=True)
+    created_at = Column(DateTime, default=now_bishkek)
+    updated_at = Column(DateTime, default=now_bishkek, onupdate=now_bishkek)
+
+    added_by = relationship("Operator")

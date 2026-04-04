@@ -593,7 +593,16 @@ async def handle_client_message(message: types.Message, session):
     previous_context = await get_client_previous_messages(
         session, client.id, conversation.id
     )
-    response_text = await generate_response(history, previous_context, knowledge_hint)
+    # Загружаем заметки менеджера (если есть телефон клиента)
+    notes_text = None
+    if client.phone:
+        from app.services.notes import get_notes_for_phone
+        manager_notes_list = await get_notes_for_phone(session, client.phone)
+        notes_text = "\n".join(
+            f"[{n.created_at.strftime('%d.%m')}] {n.text}" for n in manager_notes_list
+        ) if manager_notes_list else None
+
+    response_text = await generate_response(history, previous_context, knowledge_hint, manager_notes=notes_text)
 
     # Извлекаем категорию из ответа AI или из текста клиента
     category = extract_category(response_text)

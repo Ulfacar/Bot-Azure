@@ -75,4 +75,13 @@ export const getTrainSuggestion = (conversationId) =>
 export const trainFromConversation = (question, answer, conversationId) =>
   api.post("/knowledge/train", { question, answer, conversation_id: conversationId });
 
+// --- Notes (Заметки менеджера) ---
+export const getNotesByClient = (clientId) =>
+  api.get(`/notes/by-client/${clientId}`);
+
+export const createNote = (phone, text) =>
+  api.post("/notes/", { phone, text });
+
+export const deleteNote = (id) => api.delete(`/notes/${id}`);
+
 export default api;
