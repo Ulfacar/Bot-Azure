@@ -11,7 +11,7 @@ from app.services.notes import normalize_phone
 router = APIRouter(prefix="/notes", tags=["Notes"])
 
 
-@router.get("/", response_model=list[NoteOut])
+@router.get("", response_model=list[NoteOut])
 async def list_notes(
     phone: str = Query(..., description="Номер телефона"),
     session: AsyncSession = Depends(get_session),
@@ -57,7 +57,7 @@ async def list_notes_by_client(
     return result.scalars().all()
 
 
-@router.post("/", response_model=NoteOut, status_code=201)
+@router.post("", response_model=NoteOut, status_code=201)
 async def create_note(
     data: NoteCreate,
     session: AsyncSession = Depends(get_session),

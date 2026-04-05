@@ -80,7 +80,7 @@ export const getNotesByClient = (clientId) =>
   api.get(`/notes/by-client/${clientId}`);
 
 export const createNote = (phone, text) =>
-  api.post("/notes/", { phone, text });
+  api.post("/notes", { phone, text });
 
 export const deleteNote = (id) => api.delete(`/notes/${id}`);
 
