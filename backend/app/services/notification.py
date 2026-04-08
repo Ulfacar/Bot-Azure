@@ -31,14 +31,17 @@ def clear_operator_replying(operator_telegram_id: str):
     operator_reply_state.pop(operator_telegram_id, None)
 
 
-async def get_operators_with_telegram(session: AsyncSession) -> list[Operator]:
-    """Получить всех активных менеджеров с telegram_id."""
-    result = await session.execute(
-        select(Operator).where(
-            Operator.is_active == True,
-            Operator.telegram_id.isnot(None),
-        )
+async def get_operators_with_telegram(
+    session: AsyncSession, hotel_id: int | None = None
+) -> list[Operator]:
+    """Получить активных менеджеров с telegram_id (для конкретного отеля или всех)."""
+    query = select(Operator).where(
+        Operator.is_active == True,
+        Operator.telegram_id.isnot(None),
     )
+    if hotel_id is not None:
+        query = query.where(Operator.hotel_id == hotel_id)
+    result = await session.execute(query)
     return list(result.scalars().all())
 
 

@@ -27,18 +27,20 @@ async def get_or_create_client(
     channel_user_id: str,
     name: str | None = None,
     username: str | None = None,
+    hotel_id: int | None = None,
 ) -> Client:
     """Найти клиента по мессенджеру или создать нового."""
-    result = await session.execute(
-        select(Client).where(
-            Client.channel == channel,
-            Client.channel_user_id == channel_user_id,
-        )
+    query = select(Client).where(
+        Client.channel == channel,
+        Client.channel_user_id == channel_user_id,
     )
+    if hotel_id is not None:
+        query = query.where(Client.hotel_id == hotel_id)
+
+    result = await session.execute(query)
     client = result.scalar_one_or_none()
 
     if client:
-        # Обновляем имя/username если изменились
         if name and client.name != name:
             client.name = name
         if username and client.username != username:
@@ -47,6 +49,7 @@ async def get_or_create_client(
         return client
 
     client = Client(
+        hotel_id=hotel_id,
         channel=channel,
         channel_user_id=channel_user_id,
         name=name,
@@ -107,10 +110,10 @@ async def get_active_conversation(
 
 
 async def create_conversation(
-    session: AsyncSession, client_id: int
+    session: AsyncSession, client_id: int, hotel_id: int | None = None
 ) -> Conversation:
     """Создать новый диалог."""
-    conversation = Conversation(client_id=client_id)
+    conversation = Conversation(client_id=client_id, hotel_id=hotel_id)
     session.add(conversation)
     await session.commit()
     await session.refresh(conversation)

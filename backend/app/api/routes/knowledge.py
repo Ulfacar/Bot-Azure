@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from app.db.database import get_session
 from app.db.models.models import KnowledgeBase, Operator
-from app.core.auth import get_current_operator
+from app.core.auth import get_current_hotel_id, get_current_operator
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 
@@ -42,10 +42,12 @@ async def get_knowledge_entries(
     offset: int = Query(0, ge=0),
     session: AsyncSession = Depends(get_session),
     current_operator: Operator = Depends(get_current_operator),
+    hotel_id: int = Depends(get_current_hotel_id),
 ):
     """Получить записи базы знаний с пагинацией."""
     result = await session.execute(
         select(KnowledgeBase)
+        .where(KnowledgeBase.hotel_id == hotel_id)
         .order_by(KnowledgeBase.times_used.desc())
         .offset(offset)
         .limit(limit)
@@ -89,6 +91,7 @@ async def get_train_suggestion(
     conversation_id: int,
     session: AsyncSession = Depends(get_session),
     current_operator: Operator = Depends(get_current_operator),
+    hotel_id: int = Depends(get_current_hotel_id),
 ):
     """Получить последнюю пару вопрос-ответ из диалога для обучения."""
     from app.services.knowledge import get_last_qa_pair
@@ -104,6 +107,7 @@ async def train_from_conversation(
     data: TrainRequest,
     session: AsyncSession = Depends(get_session),
     current_operator: Operator = Depends(get_current_operator),
+    hotel_id: int = Depends(get_current_hotel_id),
 ):
     """Сохранить пару вопрос-ответ из диалога в базу знаний."""
     if not data.question.strip() or not data.answer.strip():
@@ -117,6 +121,7 @@ async def train_from_conversation(
         answer=data.answer,
         operator_id=current_operator.id,
         conversation_id=data.conversation_id,
+        hotel_id=hotel_id,
     )
     return KnowledgeEntryOut(
         id=entry.id,
@@ -135,11 +140,13 @@ async def create_knowledge_entry(
     data: KnowledgeEntryCreate,
     session: AsyncSession = Depends(get_session),
     current_operator: Operator = Depends(get_current_operator),
+    hotel_id: int = Depends(get_current_hotel_id),
 ):
     """Создать новую запись в базе знаний."""
     from app.services.knowledge import extract_keywords
 
     entry = KnowledgeBase(
+        hotel_id=hotel_id,
         question=data.question,
         answer=data.answer,
         keywords=extract_keywords(data.question),
@@ -169,12 +176,15 @@ async def update_knowledge_entry(
     data: KnowledgeEntryUpdate,
     session: AsyncSession = Depends(get_session),
     current_operator: Operator = Depends(get_current_operator),
+    hotel_id: int = Depends(get_current_hotel_id),
 ):
     """Обновить запись в базе знаний."""
     from app.services.knowledge import extract_keywords
 
     result = await session.execute(
-        select(KnowledgeBase).where(KnowledgeBase.id == entry_id)
+        select(KnowledgeBase).where(
+            KnowledgeBase.id == entry_id, KnowledgeBase.hotel_id == hotel_id
+        )
     )
     entry = result.scalar_one_or_none()
 
@@ -219,10 +229,13 @@ async def delete_knowledge_entry(
     entry_id: int,
     session: AsyncSession = Depends(get_session),
     current_operator: Operator = Depends(get_current_operator),
+    hotel_id: int = Depends(get_current_hotel_id),
 ):
     """Удалить запись из базы знаний."""
     result = await session.execute(
-        select(KnowledgeBase).where(KnowledgeBase.id == entry_id)
+        select(KnowledgeBase).where(
+            KnowledgeBase.id == entry_id, KnowledgeBase.hotel_id == hotel_id
+        )
     )
     entry = result.scalar_one_or_none()
 

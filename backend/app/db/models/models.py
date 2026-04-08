@@ -17,6 +17,7 @@ from sqlalchemy import (
     Text,
     Boolean,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 
@@ -57,6 +58,93 @@ class Language(str, enum.Enum):
     ky = "ky"
 
 
+class HotelStatus(str, enum.Enum):
+    active = "active"
+    paused = "paused"
+    archived = "archived"
+
+
+class ApplicationStatus(str, enum.Enum):
+    pending = "pending"
+    configuring = "configuring"
+    active = "active"
+    rejected = "rejected"
+
+
+class PlatformRole(str, enum.Enum):
+    superadmin = "superadmin"
+    admin = "admin"
+
+
+# --- Платформа ---
+
+class Hotel(Base):
+    """Отель — tenant в multi-tenant системе"""
+    __tablename__ = "hotels"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), nullable=False)
+    slug = Column(String(100), unique=True, nullable=False, index=True)
+    config = Column(JSONB, nullable=True)  # Гибкие настройки (цены, комнаты, шаблоны)
+    system_prompt = Column(Text, nullable=True)  # AI промпт для этого отеля
+
+    # Каналы
+    telegram_bot_token = Column(String(255), nullable=True)
+    wappi_api_key = Column(String(255), nullable=True)
+    wappi_profile_id = Column(String(255), nullable=True)
+
+    # PMS
+    pms_type = Column(String(50), nullable=True)  # exely / bnovo / travelline / none
+    pms_api_key = Column(String(255), nullable=True)
+    pms_hotel_code = Column(String(100), nullable=True)
+
+    # AI
+    ai_model = Column(String(255), default="anthropic/claude-3.5-haiku")
+
+    status = Column(Enum(HotelStatus), default=HotelStatus.active)
+    created_at = Column(DateTime, default=now_bishkek)
+    updated_at = Column(DateTime, default=now_bishkek, onupdate=now_bishkek)
+
+    # Relationships
+    clients = relationship("Client", back_populates="hotel")
+    conversations = relationship("Conversation", back_populates="hotel")
+    operators = relationship("Operator", back_populates="hotel")
+    knowledge_entries = relationship("KnowledgeBase", back_populates="hotel")
+    client_notes = relationship("ClientNote", back_populates="hotel")
+    applications = relationship("Application", back_populates="hotel")
+
+
+class Application(Base):
+    """Заявка на подключение отеля"""
+    __tablename__ = "applications"
+
+    id = Column(Integer, primary_key=True)
+    status = Column(Enum(ApplicationStatus), default=ApplicationStatus.pending)
+    hotel_name = Column(String(255), nullable=False)
+    contact_name = Column(String(255), nullable=True)
+    contact_phone = Column(String(50), nullable=True)
+    contact_email = Column(String(255), nullable=True)
+    form_data = Column(JSONB, nullable=True)  # Данные из формы 5 шагов
+    generated_prompt = Column(Text, nullable=True)
+    hotel_id = Column(Integer, ForeignKey("hotels.id"), nullable=True)
+    created_at = Column(DateTime, default=now_bishkek)
+    updated_at = Column(DateTime, default=now_bishkek, onupdate=now_bishkek)
+
+    hotel = relationship("Hotel", back_populates="applications")
+
+
+class PlatformUser(Base):
+    """Администратор платформы (superadmin)"""
+    __tablename__ = "platform_users"
+
+    id = Column(Integer, primary_key=True)
+    email = Column(String(255), unique=True, nullable=False)
+    password_hash = Column(String(255), nullable=False)
+    role = Column(Enum(PlatformRole), default=PlatformRole.superadmin)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=now_bishkek)
+
+
 # --- Модели ---
 
 class Client(Base):
@@ -64,6 +152,7 @@ class Client(Base):
     __tablename__ = "clients"
 
     id = Column(Integer, primary_key=True)
+    hotel_id = Column(Integer, ForeignKey("hotels.id"), nullable=True)
     name = Column(String(255), nullable=True)
     phone = Column(String(50), nullable=True)
     username = Column(String(255), nullable=True)
@@ -72,6 +161,7 @@ class Client(Base):
     language = Column(Enum(Language), default=Language.ru)
     created_at = Column(DateTime, default=now_bishkek)
 
+    hotel = relationship("Hotel", back_populates="clients")
     conversations = relationship("Conversation", back_populates="client")
 
 
@@ -80,6 +170,7 @@ class Conversation(Base):
     __tablename__ = "conversations"
 
     id = Column(Integer, primary_key=True)
+    hotel_id = Column(Integer, ForeignKey("hotels.id"), nullable=True)
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
     status = Column(Enum(ConversationStatus), default=ConversationStatus.in_progress)
     category = Column(Enum(ConversationCategory), default=ConversationCategory.general)
@@ -87,6 +178,7 @@ class Conversation(Base):
     created_at = Column(DateTime, default=now_bishkek)
     updated_at = Column(DateTime, default=now_bishkek, onupdate=now_bishkek)
 
+    hotel = relationship("Hotel", back_populates="conversations")
     client = relationship("Client", back_populates="conversations")
     messages = relationship("Message", back_populates="conversation")
     assigned_operator = relationship("Operator", back_populates="conversations")
@@ -110,6 +202,7 @@ class Operator(Base):
     __tablename__ = "operators"
 
     id = Column(Integer, primary_key=True)
+    hotel_id = Column(Integer, ForeignKey("hotels.id"), nullable=True)
     name = Column(String(255), nullable=False)
     email = Column(String(255), unique=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
@@ -118,6 +211,7 @@ class Operator(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=now_bishkek)
 
+    hotel = relationship("Hotel", back_populates="operators")
     conversations = relationship("Conversation", back_populates="assigned_operator")
 
 
@@ -139,6 +233,7 @@ class KnowledgeBase(Base):
     __tablename__ = "knowledge_base"
 
     id = Column(Integer, primary_key=True)
+    hotel_id = Column(Integer, ForeignKey("hotels.id"), nullable=True)
     question = Column(Text, nullable=False)      # Вопрос клиента
     answer = Column(Text, nullable=False)        # Ответ менеджера
     keywords = Column(Text, nullable=True)       # Ключевые слова для поиска
@@ -149,6 +244,7 @@ class KnowledgeBase(Base):
     created_at = Column(DateTime, default=now_bishkek)
     updated_at = Column(DateTime, default=now_bishkek, onupdate=now_bishkek)
 
+    hotel = relationship("Hotel", back_populates="knowledge_entries")
     added_by = relationship("Operator")
 
 
@@ -161,10 +257,12 @@ class ClientNote(Base):
     __tablename__ = "client_notes"
 
     id = Column(Integer, primary_key=True)
+    hotel_id = Column(Integer, ForeignKey("hotels.id"), nullable=True)
     phone = Column(String(50), nullable=False, index=True)
     text = Column(Text, nullable=False)
     added_by_id = Column(Integer, ForeignKey("operators.id"), nullable=True)
     created_at = Column(DateTime, default=now_bishkek)
     updated_at = Column(DateTime, default=now_bishkek, onupdate=now_bishkek)
 
+    hotel = relationship("Hotel", back_populates="client_notes")
     added_by = relationship("Operator")

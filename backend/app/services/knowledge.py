@@ -14,12 +14,13 @@ async def add_to_knowledge_base(
     answer: str,
     operator_id: int | None = None,
     conversation_id: int | None = None,
+    hotel_id: int | None = None,
 ) -> KnowledgeBase:
     """Добавить новую запись в базу знаний."""
-    # Генерируем ключевые слова из вопроса (простая версия)
     keywords = extract_keywords(question)
 
     entry = KnowledgeBase(
+        hotel_id=hotel_id,
         question=question,
         answer=answer,
         keywords=keywords,
@@ -83,6 +84,7 @@ async def search_knowledge_base(
     question: str,
     threshold: float = 0.75,
     min_common_keywords: int = 2,
+    hotel_id: int | None = None,
 ) -> KnowledgeBase | None:
     """Поиск ответа в базе знаний по вопросу.
 
@@ -95,13 +97,14 @@ async def search_knowledge_base(
     keyword_list = keywords.split()
     normalized_question_keywords = set(normalize_word(w) for w in keyword_list)
 
-    # Слишком короткий вопрос — KB не справится точно
     if len(normalized_question_keywords) < 2:
         return None
 
-    result = await session.execute(
-        select(KnowledgeBase).where(KnowledgeBase.is_active == True)
-    )
+    query = select(KnowledgeBase).where(KnowledgeBase.is_active == True)
+    if hotel_id is not None:
+        query = query.where(KnowledgeBase.hotel_id == hotel_id)
+
+    result = await session.execute(query)
     entries = list(result.scalars().all())
 
     if not entries:

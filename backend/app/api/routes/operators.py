@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.schemas import OperatorCreate, OperatorOut
-from app.core.auth import get_current_operator, hash_password
+from app.core.auth import get_current_hotel_id, get_current_operator, hash_password
 from app.db.database import get_session
 from app.db.models.models import Operator
 
@@ -14,13 +14,16 @@ router = APIRouter(prefix="/operators", tags=["Operators"])
 async def list_operators(
     session: AsyncSession = Depends(get_session),
     current: Operator = Depends(get_current_operator),
+    hotel_id: int = Depends(get_current_hotel_id),
 ):
-    """Список всех менеджеров. Только для админов."""
+    """Список менеджеров этого отеля. Только для админов."""
     if not current.is_admin:
         raise HTTPException(status_code=403, detail="Только для админов")
 
     result = await session.execute(
-        select(Operator).order_by(Operator.created_at.asc())
+        select(Operator)
+        .where(Operator.hotel_id == hotel_id)
+        .order_by(Operator.created_at.asc())
     )
     return result.scalars().all()
 
@@ -30,12 +33,12 @@ async def create_operator(
     data: OperatorCreate,
     session: AsyncSession = Depends(get_session),
     current: Operator = Depends(get_current_operator),
+    hotel_id: int = Depends(get_current_hotel_id),
 ):
-    """Создать нового менеджера. Только для админов."""
+    """Создать нового менеджера для этого отеля. Только для админов."""
     if not current.is_admin:
         raise HTTPException(status_code=403, detail="Только для админов")
 
-    # Проверяем уникальность email
     result = await session.execute(
         select(Operator).where(Operator.email == data.email)
     )
@@ -43,6 +46,7 @@ async def create_operator(
         raise HTTPException(status_code=400, detail="Email уже используется")
 
     operator = Operator(
+        hotel_id=hotel_id,
         name=data.name,
         email=data.email,
         password_hash=hash_password(data.password),
@@ -60,13 +64,16 @@ async def deactivate_operator(
     operator_id: int,
     session: AsyncSession = Depends(get_session),
     current: Operator = Depends(get_current_operator),
+    hotel_id: int = Depends(get_current_hotel_id),
 ):
     """Деактивировать менеджера. Только для админов."""
     if not current.is_admin:
         raise HTTPException(status_code=403, detail="Только для админов")
 
     result = await session.execute(
-        select(Operator).where(Operator.id == operator_id)
+        select(Operator).where(
+            Operator.id == operator_id, Operator.hotel_id == hotel_id
+        )
     )
     operator = result.scalar_one_or_none()
     if not operator:

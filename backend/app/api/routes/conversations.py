@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.schemas import ConversationOut, ConversationUpdate
-from app.core.auth import get_current_operator
+from app.core.auth import get_current_hotel_id, get_current_operator
 from app.db.database import get_session
 from app.db.models.models import Booking, Client, Conversation, ConversationStatus, KnowledgeBase, Message, MessageSender, Operator
 
@@ -22,12 +22,14 @@ async def list_conversations(
     offset: int = Query(0, ge=0),
     session: AsyncSession = Depends(get_session),
     operator: Operator = Depends(get_current_operator),
+    hotel_id: int = Depends(get_current_hotel_id),
 ):
     """Список диалогов с фильтрацией по статусу и поиском по имени клиента."""
     query = (
         select(Conversation)
         .join(Client)
         .options(selectinload(Conversation.client))
+        .where(Conversation.hotel_id == hotel_id)
         .order_by(Conversation.updated_at.desc())
     )
 
@@ -50,15 +52,16 @@ async def list_conversations(
 async def get_stats(
     session: AsyncSession = Depends(get_session),
     operator: Operator = Depends(get_current_operator),
+    hotel_id: int = Depends(get_current_hotel_id),
 ):
     """Статистика диалогов за сегодня и всего."""
-    # Сегодня по UTC+6 (Кыргызстан), но без таймзоны для совместимости с БД
     now = datetime.utcnow() + timedelta(hours=6)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
     # Всего по статусам
     result = await session.execute(
         select(Conversation.status, func.count())
+        .where(Conversation.hotel_id == hotel_id)
         .group_by(Conversation.status)
     )
     total_by_status = {row[0]: row[1] for row in result.all()}
@@ -66,6 +69,7 @@ async def get_stats(
     # Сегодня по статусам
     result = await session.execute(
         select(Conversation.status, func.count())
+        .where(Conversation.hotel_id == hotel_id)
         .where(Conversation.created_at >= today_start)
         .group_by(Conversation.status)
     )
@@ -98,12 +102,12 @@ async def get_stats(
 async def get_efficiency(
     session: AsyncSession = Depends(get_session),
     operator: Operator = Depends(get_current_operator),
+    hotel_id: int = Depends(get_current_hotel_id),
 ):
     """Расширенная статистика эффективности бота."""
     now = datetime.utcnow() + timedelta(hours=6)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    # Общее количество завершённых диалогов (не in_progress)
     finished_statuses = [
         ConversationStatus.bot_completed,
         ConversationStatus.closed,
@@ -124,6 +128,7 @@ async def get_efficiency(
                 ]), 1),
             )).label("escalated"),
         )
+        .where(Conversation.hotel_id == hotel_id)
         .where(Conversation.status.in_(finished_statuses))
     )
     row = result.one()
@@ -131,10 +136,12 @@ async def get_efficiency(
     bot_solved = row.bot_solved or 0
     escalated = row.escalated or 0
 
-    # Среднее кол-во сообщений бота на диалог (через подзапрос)
+    # Среднее кол-во сообщений бота на диалог
     bot_counts = (
         select(func.count(Message.id).label("cnt"))
+        .join(Conversation, Message.conversation_id == Conversation.id)
         .where(Message.sender == MessageSender.bot)
+        .where(Conversation.hotel_id == hotel_id)
         .group_by(Message.conversation_id)
         .subquery()
     )
@@ -146,6 +153,7 @@ async def get_efficiency(
     # Уникальные клиенты
     result = await session.execute(
         select(func.count(distinct(Conversation.client_id)))
+        .where(Conversation.hotel_id == hotel_id)
     )
     unique_clients = result.scalar() or 0
 
@@ -157,6 +165,7 @@ async def get_efficiency(
                 (Conversation.status == ConversationStatus.bot_completed, 1),
             )).label("today_bot_solved"),
         )
+        .where(Conversation.hotel_id == hotel_id)
         .where(Conversation.created_at >= today_start)
         .where(Conversation.status.in_(finished_statuses))
     )
@@ -184,12 +193,13 @@ async def get_conversation(
     conversation_id: int,
     session: AsyncSession = Depends(get_session),
     operator: Operator = Depends(get_current_operator),
+    hotel_id: int = Depends(get_current_hotel_id),
 ):
     """Получить один диалог по ID."""
     result = await session.execute(
         select(Conversation)
         .options(selectinload(Conversation.client))
-        .where(Conversation.id == conversation_id)
+        .where(Conversation.id == conversation_id, Conversation.hotel_id == hotel_id)
     )
     conversation = result.scalar_one_or_none()
     if not conversation:
@@ -203,12 +213,13 @@ async def update_conversation(
     data: ConversationUpdate,
     session: AsyncSession = Depends(get_session),
     operator: Operator = Depends(get_current_operator),
+    hotel_id: int = Depends(get_current_hotel_id),
 ):
     """Обновить статус, категорию или назначить оператора."""
     result = await session.execute(
         select(Conversation)
         .options(selectinload(Conversation.client))
-        .where(Conversation.id == conversation_id)
+        .where(Conversation.id == conversation_id, Conversation.hotel_id == hotel_id)
     )
     conversation = result.scalar_one_or_none()
     if not conversation:
@@ -231,10 +242,13 @@ async def delete_conversation(
     conversation_id: int,
     session: AsyncSession = Depends(get_session),
     operator: Operator = Depends(get_current_operator),
+    hotel_id: int = Depends(get_current_hotel_id),
 ):
     """Удалить один диалог и все его сообщения."""
     result = await session.execute(
-        select(Conversation).where(Conversation.id == conversation_id)
+        select(Conversation).where(
+            Conversation.id == conversation_id, Conversation.hotel_id == hotel_id
+        )
     )
     conversation = result.scalar_one_or_none()
     if not conversation:
@@ -252,13 +266,24 @@ async def delete_conversations_batch(
     ids: list[int] = Body(..., embed=True),
     session: AsyncSession = Depends(get_session),
     operator: Operator = Depends(get_current_operator),
+    hotel_id: int = Depends(get_current_hotel_id),
 ):
     """Массовое удаление диалогов."""
     if not ids:
         raise HTTPException(status_code=400, detail="Список ID пуст")
 
-    await session.execute(delete(KnowledgeBase).where(KnowledgeBase.conversation_id.in_(ids)))
-    await session.execute(delete(Booking).where(Booking.conversation_id.in_(ids)))
-    await session.execute(delete(Message).where(Message.conversation_id.in_(ids)))
-    await session.execute(delete(Conversation).where(Conversation.id.in_(ids)))
+    # Фильтруем только диалоги принадлежащие этому отелю
+    result = await session.execute(
+        select(Conversation.id).where(
+            Conversation.id.in_(ids), Conversation.hotel_id == hotel_id
+        )
+    )
+    valid_ids = [row[0] for row in result.all()]
+    if not valid_ids:
+        return
+
+    await session.execute(delete(KnowledgeBase).where(KnowledgeBase.conversation_id.in_(valid_ids)))
+    await session.execute(delete(Booking).where(Booking.conversation_id.in_(valid_ids)))
+    await session.execute(delete(Message).where(Message.conversation_id.in_(valid_ids)))
+    await session.execute(delete(Conversation).where(Conversation.id.in_(valid_ids)))
     await session.commit()

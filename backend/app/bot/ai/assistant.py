@@ -147,11 +147,66 @@ def get_ai_client() -> AsyncOpenAI | None:
     )
 
 
+# Кеш промптов: hotel_id -> (prompt, timestamp)
+_prompt_cache: dict[int, tuple[str, float]] = {}
+_PROMPT_CACHE_TTL = 300  # 5 минут
+
+
+async def get_system_prompt(hotel_id: int | None = None) -> str:
+    """Загрузить system prompt для отеля. Если hotel_id=None — используем хардкод (обратная совместимость)."""
+    import time
+
+    if hotel_id is None:
+        return SYSTEM_PROMPT
+
+    # Проверяем кеш
+    cached = _prompt_cache.get(hotel_id)
+    if cached and (time.time() - cached[1]) < _PROMPT_CACHE_TTL:
+        return cached[0]
+
+    # Загружаем из БД
+    from app.db.database import async_session
+    from app.db.models.models import Hotel
+    from sqlalchemy import select
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(Hotel.system_prompt, Hotel.ai_model).where(Hotel.id == hotel_id)
+        )
+        row = result.one_or_none()
+
+    if row and row.system_prompt:
+        _prompt_cache[hotel_id] = (row.system_prompt, time.time())
+        return row.system_prompt
+
+    # Fallback на хардкод если у отеля нет промпта
+    return SYSTEM_PROMPT
+
+
+async def get_hotel_ai_model(hotel_id: int | None = None) -> str:
+    """Получить модель AI для отеля."""
+    if hotel_id is None:
+        return settings.ai_model
+
+    from app.db.database import async_session
+    from app.db.models.models import Hotel
+    from sqlalchemy import select
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(Hotel.ai_model).where(Hotel.id == hotel_id)
+        )
+        model = result.scalar_one_or_none()
+
+    return model or settings.ai_model
+
+
 async def generate_response(
     history: list[Message],
     previous_context: list[Message] | None = None,
     knowledge_hint: str | None = None,
     manager_notes: str | None = None,
+    hotel_id: int | None = None,
 ) -> str:
     """Сгенерировать ответ на основе истории диалога.
 
@@ -168,6 +223,9 @@ async def generate_response(
             "Менеджер свяжется с вами в ближайшее время."
         )
 
+    # Загружаем промпт для отеля (из БД или хардкод)
+    system_prompt = await get_system_prompt(hotel_id)
+
     # Динамически добавляем текущую дату в промпт
     now = datetime.now()
     day_names = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
@@ -179,7 +237,7 @@ async def generate_response(
         f"Используй эту дату для расчётов: «эти выходные», «следующая неделя», «через 2 дня» и т.д.\n"
         f"=== КОНЕЦ ==="
     )
-    messages = [{"role": "system", "content": SYSTEM_PROMPT + date_line}]
+    messages = [{"role": "system", "content": system_prompt + date_line}]
 
     # Добавляем контекст из предыдущих диалогов (кросс-диалоговая память)
     if previous_context:
@@ -222,8 +280,9 @@ async def generate_response(
     last_error = None
     for attempt in range(3):
         try:
+            ai_model = await get_hotel_ai_model(hotel_id)
             response = await client.chat.completions.create(
-                model=settings.ai_model,
+                model=ai_model,
                 max_tokens=800,
                 temperature=0.3,
                 messages=messages,

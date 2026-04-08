@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.schemas import NoteCreate, NoteOut, NoteUpdate
-from app.core.auth import get_current_operator
+from app.core.auth import get_current_hotel_id, get_current_operator
 from app.db.database import get_session
 from app.db.models.models import Client, ClientNote, Operator
 from app.services.notes import normalize_phone
@@ -16,12 +16,13 @@ async def list_notes(
     phone: str = Query(..., description="Номер телефона"),
     session: AsyncSession = Depends(get_session),
     operator: Operator = Depends(get_current_operator),
+    hotel_id: int = Depends(get_current_hotel_id),
 ):
     """Получить заметки по номеру телефона."""
     normalized = normalize_phone(phone)
     result = await session.execute(
         select(ClientNote)
-        .where(ClientNote.phone == normalized)
+        .where(ClientNote.phone == normalized, ClientNote.hotel_id == hotel_id)
         .order_by(ClientNote.created_at.desc())
     )
     return result.scalars().all()
@@ -32,16 +33,16 @@ async def list_notes_by_client(
     client_id: int,
     session: AsyncSession = Depends(get_session),
     operator: Operator = Depends(get_current_operator),
+    hotel_id: int = Depends(get_current_hotel_id),
 ):
     """Получить заметки по client_id (ищет phone клиента или channel_user_id для WhatsApp)."""
     result = await session.execute(
-        select(Client).where(Client.id == client_id)
+        select(Client).where(Client.id == client_id, Client.hotel_id == hotel_id)
     )
     client = result.scalar_one_or_none()
     if not client:
         raise HTTPException(status_code=404, detail="Клиент не найден")
 
-    # Для WhatsApp channel_user_id = номер телефона
     phone = client.phone or (
         client.channel_user_id if client.channel.value == "whatsapp" else None
     )
@@ -51,7 +52,7 @@ async def list_notes_by_client(
     normalized = normalize_phone(phone)
     result = await session.execute(
         select(ClientNote)
-        .where(ClientNote.phone == normalized)
+        .where(ClientNote.phone == normalized, ClientNote.hotel_id == hotel_id)
         .order_by(ClientNote.created_at.desc())
     )
     return result.scalars().all()
@@ -62,9 +63,11 @@ async def create_note(
     data: NoteCreate,
     session: AsyncSession = Depends(get_session),
     operator: Operator = Depends(get_current_operator),
+    hotel_id: int = Depends(get_current_hotel_id),
 ):
     """Создать заметку о клиенте."""
     note = ClientNote(
+        hotel_id=hotel_id,
         phone=normalize_phone(data.phone),
         text=data.text,
         added_by_id=operator.id,
@@ -81,10 +84,13 @@ async def update_note(
     data: NoteUpdate,
     session: AsyncSession = Depends(get_session),
     operator: Operator = Depends(get_current_operator),
+    hotel_id: int = Depends(get_current_hotel_id),
 ):
     """Редактировать заметку."""
     result = await session.execute(
-        select(ClientNote).where(ClientNote.id == note_id)
+        select(ClientNote).where(
+            ClientNote.id == note_id, ClientNote.hotel_id == hotel_id
+        )
     )
     note = result.scalar_one_or_none()
     if not note:
@@ -100,10 +106,13 @@ async def delete_note(
     note_id: int,
     session: AsyncSession = Depends(get_session),
     operator: Operator = Depends(get_current_operator),
+    hotel_id: int = Depends(get_current_hotel_id),
 ):
     """Удалить заметку."""
     result = await session.execute(
-        select(ClientNote).where(ClientNote.id == note_id)
+        select(ClientNote).where(
+            ClientNote.id == note_id, ClientNote.hotel_id == hotel_id
+        )
     )
     note = result.scalar_one_or_none()
     if not note:

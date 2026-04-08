@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.schemas import MessageCreate, MessageOut
 from app.bot.channels.telegram import get_bot
-from app.core.auth import get_current_operator
+from app.core.auth import get_current_hotel_id, get_current_operator
 from app.db.database import get_session
 from app.db.models.models import (
     ChannelType,
@@ -30,10 +30,13 @@ async def get_messages(
     offset: int = Query(0, ge=0),
     session: AsyncSession = Depends(get_session),
     operator: Operator = Depends(get_current_operator),
+    hotel_id: int = Depends(get_current_hotel_id),
 ):
     """Получить сообщения диалога с пагинацией."""
     result = await session.execute(
-        select(Conversation).where(Conversation.id == conversation_id)
+        select(Conversation).where(
+            Conversation.id == conversation_id, Conversation.hotel_id == hotel_id
+        )
     )
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Диалог не найден")
@@ -54,12 +57,13 @@ async def send_message(
     data: MessageCreate,
     session: AsyncSession = Depends(get_session),
     operator: Operator = Depends(get_current_operator),
+    hotel_id: int = Depends(get_current_hotel_id),
 ):
     """Менеджер отправляет сообщение в диалог."""
     result = await session.execute(
         select(Conversation)
         .options(selectinload(Conversation.client))
-        .where(Conversation.id == conversation_id)
+        .where(Conversation.id == conversation_id, Conversation.hotel_id == hotel_id)
     )
     conversation = result.scalar_one_or_none()
     if not conversation:
