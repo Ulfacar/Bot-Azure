@@ -88,7 +88,10 @@ async def get_active_conversation(
         select(Conversation)
         .where(
             Conversation.client_id == client_id,
-            Conversation.status == ConversationStatus.closed,
+            Conversation.status.in_([
+                ConversationStatus.closed,
+                ConversationStatus.bot_completed,
+            ]),
             Conversation.updated_at >= cutoff,
         )
         .order_by(Conversation.updated_at.desc())
@@ -210,26 +213,42 @@ async def get_client_previous_messages(
 
 async def close_stale_conversations(session: AsyncSession, timeout_hours: int = 1) -> int:
     """Закрыть неактивные диалоги.
-    - in_progress без активности > timeout_hours → closed
-    - bot_completed без активности > timeout_hours → closed
+    - in_progress без менеджера > timeout_hours → bot_completed (бот справился)
+    - in_progress с менеджером > timeout_hours → closed
     - needs_operator без активности > 4 часов → closed
-    НЕ трогает operator_active (менеджер работает).
+    НЕ трогает operator_active и bot_completed (финальные статусы).
     Возвращает количество закрытых диалогов."""
     cutoff = datetime.utcnow() - timedelta(hours=timeout_hours)
     cutoff_long = datetime.utcnow() - timedelta(hours=4)
 
-    # Закрываем in_progress и bot_completed
-    result1 = await session.execute(
-        update(Conversation)
+    # Находим in_progress диалоги для автозакрытия
+    stale_in_progress = await session.execute(
+        select(Conversation)
         .where(
-            Conversation.status.in_([
-                ConversationStatus.in_progress,
-                ConversationStatus.bot_completed,
-            ]),
+            Conversation.status == ConversationStatus.in_progress,
             Conversation.updated_at < cutoff,
         )
-        .values(status=ConversationStatus.closed)
     )
+    stale_convs = stale_in_progress.scalars().all()
+
+    count_auto = 0
+    for conv in stale_convs:
+        # Проверяем: были ли сообщения от оператора в этом диалоге?
+        op_msg = await session.execute(
+            select(Message.id)
+            .where(
+                Message.conversation_id == conv.id,
+                Message.sender == MessageSender.operator,
+            )
+            .limit(1)
+        )
+        has_operator = op_msg.scalar_one_or_none() is not None
+
+        if has_operator:
+            conv.status = ConversationStatus.closed
+        else:
+            conv.status = ConversationStatus.bot_completed
+        count_auto += 1
 
     # Закрываем зависшие needs_operator (4 часа без ответа менеджера)
     result2 = await session.execute(
@@ -242,4 +261,4 @@ async def close_stale_conversations(session: AsyncSession, timeout_hours: int = 
     )
 
     await session.commit()
-    return result1.rowcount + result2.rowcount
+    return count_auto + result2.rowcount
