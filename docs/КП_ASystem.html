@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ASystem — AI-ассистент для вашего отеля</title>
+<style>
+  @page {
+    margin: 0;
+    size: A4;
+  }
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    color: #1a1a2e;
+    line-height: 1.6;
+    background: #fff;
+  }
+
+  /* PAGE 1 — COVER */
+  .cover {
+    height: 100vh;
+    background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 60px;
+    page-break-after: always;
+  }
+  .cover .logo {
+    font-size: 18px;
+    letter-spacing: 6px;
+    text-transform: uppercase;
+    opacity: 0.7;
+    margin-bottom: 40px;
+  }
+  .cover h1 {
+    font-size: 48px;
+    font-weight: 700;
+    line-height: 1.2;
+    margin-bottom: 20px;
+  }
+  .cover h1 span {
+    color: #7f5af0;
+  }
+  .cover .subtitle {
+    font-size: 20px;
+    opacity: 0.8;
+    max-width: 600px;
+    margin-bottom: 50px;
+  }
+  .cover .tagline {
+    font-size: 14px;
+    opacity: 0.5;
+    letter-spacing: 2px;
+  }
+
+  /* PAGES */
+  .page {
+    padding: 50px 60px;
+    page-break-after: always;
+    min-height: 100vh;
+  }
+  .page:last-child {
+    page-break-after: avoid;
+  }
+  .page h2 {
+    font-size: 32px;
+    color: #302b63;
+    margin-bottom: 30px;
+    padding-bottom: 10px;
+    border-bottom: 3px solid #7f5af0;
+    display: inline-block;
+  }
+  .page h3 {
+    font-size: 20px;
+    color: #302b63;
+    margin: 25px 0 10px;
+  }
+  .page p, .page li {
+    font-size: 15px;
+    color: #333;
+    line-height: 1.7;
+  }
+
+  /* PROBLEMS */
+  .problems {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 25px;
+    margin-top: 20px;
+  }
+  .problem-card {
+    background: #f8f7ff;
+    border-left: 4px solid #7f5af0;
+    padding: 20px 24px;
+    border-radius: 0 12px 12px 0;
+  }
+  .problem-card .icon {
+    font-size: 28px;
+    margin-bottom: 8px;
+  }
+  .problem-card h4 {
+    font-size: 16px;
+    color: #302b63;
+    margin-bottom: 6px;
+  }
+  .problem-card p {
+    font-size: 14px;
+    color: #555;
+  }
+
+  /* FEATURES */
+  .features {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-top: 20px;
+  }
+  .feature {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    padding: 16px;
+    background: #fafafa;
+    border-radius: 10px;
+  }
+  .feature .icon {
+    font-size: 26px;
+    flex-shrink: 0;
+    width: 40px;
+    text-align: center;
+  }
+  .feature h4 {
+    font-size: 15px;
+    color: #302b63;
+    margin-bottom: 4px;
+  }
+  .feature p {
+    font-size: 13px;
+    color: #666;
+  }
+
+  /* CHAT DEMO */
+  .chat-demo {
+    max-width: 420px;
+    margin: 20px auto;
+    background: #e5ddd5;
+    border-radius: 16px;
+    padding: 20px;
+    font-size: 14px;
+  }
+  .chat-demo .msg {
+    padding: 10px 14px;
+    border-radius: 12px;
+    margin-bottom: 8px;
+    max-width: 85%;
+    line-height: 1.5;
+  }
+  .chat-demo .guest {
+    background: #fff;
+    margin-right: auto;
+  }
+  .chat-demo .bot {
+    background: #dcf8c6;
+    margin-left: auto;
+  }
+
+  /* RESULTS */
+  .results-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin-top: 25px;
+  }
+  .result-card {
+    text-align: center;
+    padding: 25px 15px;
+    background: linear-gradient(135deg, #302b63, #7f5af0);
+    color: #fff;
+    border-radius: 14px;
+  }
+  .result-card .number {
+    font-size: 42px;
+    font-weight: 800;
+  }
+  .result-card .label {
+    font-size: 13px;
+    opacity: 0.85;
+    margin-top: 6px;
+  }
+
+  /* TABLE */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+    font-size: 14px;
+  }
+  th {
+    background: #302b63;
+    color: #fff;
+    padding: 12px 16px;
+    text-align: left;
+  }
+  td {
+    padding: 12px 16px;
+    border-bottom: 1px solid #eee;
+  }
+  tr:nth-child(even) td {
+    background: #f8f7ff;
+  }
+  .check { color: #2ecc71; font-weight: bold; }
+  .cross { color: #e74c3c; }
+  .highlight-row td {
+    background: #f0ebff !important;
+    font-weight: 600;
+  }
+
+  /* PRICING */
+  .pricing-box {
+    display: flex;
+    gap: 30px;
+    margin-top: 25px;
+    justify-content: center;
+  }
+  .price-card {
+    flex: 1;
+    max-width: 320px;
+    border: 2px solid #e0ddf5;
+    border-radius: 16px;
+    padding: 30px;
+    text-align: center;
+  }
+  .price-card.main {
+    border-color: #7f5af0;
+    background: linear-gradient(180deg, #f8f7ff, #fff);
+    box-shadow: 0 8px 30px rgba(127,90,240,0.15);
+  }
+  .price-card .amount {
+    font-size: 48px;
+    font-weight: 800;
+    color: #302b63;
+  }
+  .price-card .period {
+    font-size: 14px;
+    color: #888;
+    margin-bottom: 15px;
+  }
+  .price-card .desc {
+    font-size: 14px;
+    color: #555;
+    line-height: 1.6;
+  }
+  .price-card .label-tag {
+    display: inline-block;
+    background: #7f5af0;
+    color: #fff;
+    font-size: 12px;
+    padding: 4px 14px;
+    border-radius: 20px;
+    margin-bottom: 15px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  /* STEPS */
+  .steps {
+    display: flex;
+    gap: 0;
+    margin-top: 25px;
+    position: relative;
+  }
+  .step {
+    flex: 1;
+    text-align: center;
+    padding: 20px 15px;
+    position: relative;
+  }
+  .step .num {
+    width: 40px;
+    height: 40px;
+    background: #7f5af0;
+    color: #fff;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 18px;
+    margin-bottom: 10px;
+  }
+  .step h4 {
+    font-size: 14px;
+    color: #302b63;
+    margin-bottom: 5px;
+  }
+  .step p {
+    font-size: 12px;
+    color: #888;
+  }
+
+  /* FAQ */
+  .faq-item {
+    margin-bottom: 18px;
+    padding: 16px 20px;
+    background: #f8f7ff;
+    border-radius: 10px;
+  }
+  .faq-item h4 {
+    font-size: 15px;
+    color: #302b63;
+    margin-bottom: 6px;
+  }
+  .faq-item p {
+    font-size: 14px;
+    color: #555;
+  }
+
+  /* CTA */
+  .cta-page {
+    height: 100vh;
+    background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 60px;
+  }
+  .cta-page h2 {
+    font-size: 36px;
+    color: #fff;
+    border: none;
+    margin-bottom: 20px;
+  }
+  .cta-page p {
+    font-size: 18px;
+    color: rgba(255,255,255,0.7);
+    margin-bottom: 40px;
+    max-width: 500px;
+  }
+  .cta-contacts {
+    display: flex;
+    gap: 40px;
+    font-size: 18px;
+  }
+  .cta-contacts div {
+    text-align: center;
+  }
+  .cta-contacts .label {
+    font-size: 13px;
+    opacity: 0.5;
+    margin-bottom: 5px;
+  }
+
+  @media print {
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+    .cover, .cta-page { height: 297mm; }
+    .page { min-height: auto; padding: 40px 50px; }
+    .problem-card p, .feature p, .faq-item p, .price-card .desc, .step p { color: #000 !important; }
+    .page p, .page li { color: #000 !important; }
+    td { color: #000 !important; }
+    .chat-demo .guest, .chat-demo .bot { color: #000 !important; }
+    .result-card .label { color: #fff !important; opacity: 1 !important; }
+    .cover .logo, .cover .subtitle, .cover .tagline { opacity: 1 !important; color: #fff !important; }
+    .cta-contacts .label { opacity: 1 !important; color: #ccc !important; }
+    .price-card .period { color: #000 !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- PAGE 1: COVER -->
+<div class="cover">
+  <div class="logo">ASystem</div>
+  <h1>AI-ассистент<br>для <span>вашего отеля</span></h1>
+  <div class="subtitle">Умный бот в WhatsApp и Telegram, который отвечает гостям 24/7, собирает заявки на бронирование и экономит время менеджера</div>
+  <div class="tagline">Коммерческое предложение 2026</div>
+</div>
+
+<!-- PAGE 2: PROBLEMS -->
+<div class="page">
+  <h2>Знакомые проблемы?</h2>
+  <div class="problems">
+    <div class="problem-card">
+      <div class="icon">&#128337;</div>
+      <h4>Гости пишут ночью</h4>
+      <p>Вечером и ночью гости отправляют сообщения. Пока менеджер утром увидит — гость уже забронировал у конкурента.</p>
+    </div>
+    <div class="problem-card">
+      <div class="icon">&#128257;</div>
+      <h4>Одни и те же вопросы</h4>
+      <p>"Сколько стоит?", "Завтрак включён?", "Как добраться?" — менеджер тратит часы на рутину каждый день.</p>
+    </div>
+    <div class="problem-card">
+      <div class="icon">&#128203;</div>
+      <h4>Заявки теряются</h4>
+      <p>Гость написал, менеджер забыл или потерял сообщение в потоке. Нет единой системы учёта обращений.</p>
+    </div>
+    <div class="problem-card">
+      <div class="icon">&#127760;</div>
+      <h4>Языковой барьер</h4>
+      <p>Иностранный гость пишет на английском — менеджер не может ответить быстро и грамотно.</p>
+    </div>
+  </div>
+
+  <div style="margin-top: 40px; padding: 25px 30px; background: linear-gradient(135deg,#302b63,#7f5af0); border-radius: 14px; color: #fff; text-align: center;">
+    <p style="font-size: 20px; color: #fff; font-weight: 600;">Наш AI-ассистент решает все эти проблемы.</p>
+    <p style="font-size: 15px; color: rgba(255,255,255,0.8); margin-top: 6px;">Гость получает ответ за 3 секунды — днём, ночью, в праздники.</p>
+  </div>
+</div>
+
+<!-- PAGE 3: FEATURES -->
+<div class="page">
+  <h2>Что умеет бот?</h2>
+  <div class="features">
+    <div class="feature">
+      <div class="icon">&#128172;</div>
+      <div>
+        <h4>Отвечает на вопросы гостей</h4>
+        <p>Цены по сезонам, наличие номеров, услуги, правила, способы оплаты, как добраться</p>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="icon">&#128221;</div>
+      <div>
+        <h4>Собирает заявки на бронь</h4>
+        <p>Спрашивает даты, гостей, ФИО, телефон — и передаёт готовую заявку менеджеру</p>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="icon">&#127757;</div>
+      <div>
+        <h4>3 языка автоматически</h4>
+        <p>Русский, кыргызский, английский — определяет язык гостя и отвечает на нём</p>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="icon">&#128187;</div>
+      <div>
+        <h4>Панель управления</h4>
+        <p>Все диалоги в одном месте. Фильтры, статусы, история переписки, ответ из панели</p>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="icon">&#128276;</div>
+      <div>
+        <h4>Уведомления менеджеру</h4>
+        <p>Telegram-уведомление с данными заявки и кнопками действий</p>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="icon">&#129504;</div>
+      <div>
+        <h4>Самообучение</h4>
+        <p>Менеджер нажимает "Обучить" — бот запоминает новый ответ навсегда</p>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="icon">&#128203;</div>
+      <div>
+        <h4>Заметки о клиентах</h4>
+        <p>Гость звонил или приходил лично — менеджер записывает, бот знает контекст</p>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="icon">&#128200;</div>
+      <div>
+        <h4>Статистика</h4>
+        <p>Сколько обращений, сколько бот решил сам, эффективность по дням</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- PAGE 4: CHAT EXAMPLE + RESULTS -->
+<div class="page">
+  <h2>Как это выглядит</h2>
+  <p>Реальный диалог бота с гостем в WhatsApp:</p>
+
+  <div class="chat-demo">
+    <div class="msg guest">Здравствуйте, сколько стоит номер на двоих на 10-12 июля?</div>
+    <div class="msg bot">Здравствуйте! На 10-12 июля (2 ночи) номер Twin/Double — 9 000 сом/сутки, итого 18 000 сом. Завтрак включён!</div>
+    <div class="msg guest">А бассейн есть?</div>
+    <div class="msg bot">Да, открытый подогреваемый бассейн, бесплатно для всех гостей.</div>
+    <div class="msg guest">Хочу забронировать</div>
+    <div class="msg bot">Отлично! Подскажите, пожалуйста, ФИО и номер телефона для брони?</div>
+    <div class="msg guest">Иванов Иван, +996 555 123456</div>
+    <div class="msg bot">Спасибо! Передаю заявку менеджеру для подтверждения. Ожидайте ответ в ближайшее время!</div>
+  </div>
+
+  <p style="text-align: center; font-size: 14px; color: #888; margin-top: 8px;">Менеджер получает уведомление в Telegram с полной заявкой и кнопками</p>
+
+  <h2 style="margin-top: 40px;">Реальные результаты</h2>
+  <p>Бот работает в отеле <strong>Тон Азур</strong> (Иссык-Куль) с марта 2026:</p>
+
+  <div class="results-grid">
+    <div class="result-card">
+      <div class="number">2-4 сек</div>
+      <div class="label">Скорость ответа</div>
+    </div>
+    <div class="result-card">
+      <div class="number">70%</div>
+      <div class="label">Вопросов бот решает сам</div>
+    </div>
+    <div class="result-card">
+      <div class="number">24/7</div>
+      <div class="label">Без перерывов и выходных</div>
+    </div>
+    <div class="result-card">
+      <div class="number">0</div>
+      <div class="label">Потерянных обращений</div>
+    </div>
+    <div class="result-card">
+      <div class="number">3</div>
+      <div class="label">Языка автоматически</div>
+    </div>
+    <div class="result-card">
+      <div class="number">80+</div>
+      <div class="label">Диалогов обработано</div>
+    </div>
+  </div>
+</div>
+
+<!-- PAGE 5: COMPARISON -->
+<div class="page">
+  <h2>Почему мы, а не другие?</h2>
+
+  <table>
+    <tr>
+      <th style="width:35%"></th>
+      <th style="width:30%">Обычные чат-боты</th>
+      <th style="width:35%">ASystem AI-ассистент</th>
+    </tr>
+    <tr>
+      <td>Ответы</td>
+      <td>По шаблонам, ограничены</td>
+      <td class="check">Живые, как настоящий менеджер</td>
+    </tr>
+    <tr>
+      <td>Цены</td>
+      <td>Не понимает сезоны</td>
+      <td class="check">Точные цены по датам и сезонам</td>
+    </tr>
+    <tr>
+      <td>Бронирование</td>
+      <td class="cross">Не умеет</td>
+      <td class="check">Собирает заявку и передаёт менеджеру</td>
+    </tr>
+    <tr>
+      <td>Самообучение</td>
+      <td class="cross">Не учится</td>
+      <td class="check">Менеджер обучает одной кнопкой</td>
+    </tr>
+    <tr>
+      <td>Языки</td>
+      <td>Только один</td>
+      <td class="check">Русский, кыргызский, английский</td>
+    </tr>
+    <tr>
+      <td>WhatsApp</td>
+      <td class="cross">Часто нет</td>
+      <td class="check">Полная поддержка</td>
+    </tr>
+    <tr>
+      <td>Настройка</td>
+      <td>Сами разбираетесь</td>
+      <td class="check">Мы всё делаем за вас</td>
+    </tr>
+    <tr class="highlight-row">
+      <td>Стоимость</td>
+      <td>$50 - 200 / мес</td>
+      <td>$700 разово + $20/мес</td>
+    </tr>
+  </table>
+
+  <div style="margin-top: 40px;">
+    <h2>Подключение за 3 шага</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="num">1</div>
+        <h4>Заполняете бриф</h4>
+        <p>Название, номера, цены, правила, контакты — 30 минут</p>
+      </div>
+      <div class="step">
+        <div class="num">2</div>
+        <h4>Мы настраиваем</h4>
+        <p>Бот, WhatsApp, Telegram, панель управления — 1-2 дня</p>
+      </div>
+      <div class="step">
+        <div class="num">3</div>
+        <h4>Бот работает</h4>
+        <p>Менеджер получает доступ, гости получают ответы</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- PAGE 6: PRICING -->
+<div class="page">
+  <h2>Стоимость</h2>
+  <div class="pricing-box">
+    <div class="price-card main">
+      <div class="label-tag">Подключение</div>
+      <div class="amount">$700</div>
+      <div class="period">разовая оплата</div>
+      <div class="desc">
+        Настройка AI-бота под ваш отель<br>
+        Подключение WhatsApp + Telegram<br>
+        Обучение бота вашим данным<br>
+        Панель управления для менеджера<br>
+        1 месяц поддержки бесплатно
+      </div>
+    </div>
+    <div class="price-card main">
+      <div class="label-tag">Подписка</div>
+      <div class="amount">$20</div>
+      <div class="period">в месяц</div>
+      <div class="desc">
+        AI-обработка сообщений<br>
+        Хостинг и серверы<br>
+        WhatsApp канал<br>
+        Техподдержка<br>
+        Обновления и улучшения
+      </div>
+    </div>
+  </div>
+
+  <p style="text-align: center; margin-top: 20px; font-size: 14px; color: #888;">Дополнительных платежей нет. Всё включено.</p>
+
+  <div style="margin-top: 50px;">
+    <h2>Частые вопросы</h2>
+    <div class="faq-item">
+      <h4>А если бот ответит неправильно?</h4>
+      <p>Бот никогда не выдумывает. Если не знает — говорит "Уточню у менеджера". Менеджер в любой момент может перехватить диалог.</p>
+    </div>
+    <div class="faq-item">
+      <h4>А если мы поменяем цены?</h4>
+      <p>Скажите нам — обновим за час. В будущем сможете менять сами через панель.</p>
+    </div>
+    <div class="faq-item">
+      <h4>Бот заменит менеджера?</h4>
+      <p>Нет. Бот — помощник. Берёт рутину на себя, а менеджер занимается важным: подтверждение броней, VIP-гости, нестандартные запросы.</p>
+    </div>
+    <div class="faq-item">
+      <h4>Нужен ли специальный номер WhatsApp?</h4>
+      <p>Можно подключить ваш текущий номер или создадим новый — как удобнее.</p>
+    </div>
+    <div class="faq-item">
+      <h4>Работает ли с системами бронирования?</h4>
+      <p>Да. Интеграция с Exely, Bnovo и другими PMS — бот проверяет наличие номеров в реальном времени.</p>
+    </div>
+  </div>
+</div>
+
+<!-- PAGE 7: CTA -->
+<div class="cta-page">
+  <h2>Готовы подключить<br>AI-ассистента?</h2>
+  <p>Через 2 дня ваш бот уже будет отвечать гостям. Напишите нам — покажем живое демо.</p>
+  <div class="cta-contacts">
+    <div>
+      <div class="label">Телефон / WhatsApp</div>
+      +996 500 115 133
+    </div>
+    <div>
+      <div class="label">Telegram</div>
+      @Albeshev
+    </div>
+  </div>
+  <div style="margin-top: 60px; font-size: 14px; opacity: 0.4;">ASystem &mdash; AI-решения для гостеприимства</div>
+</div>
+
+</body>
+</html>
