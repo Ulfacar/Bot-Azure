@@ -512,6 +512,9 @@ async def handle_operator_message(message: types.Message, session, operator, ope
 
 async def handle_client_message(message: types.Message, session):
     """Обработка сообщения от клиента."""
+    # 0. Определяем hotel_id (пока хардкод для polling-бота, webhook будет передавать)
+    hotel_id = getattr(message, '_hotel_id', 1)  # default: Ton Azure
+
     # 1. Найти или создать клиента
     client = await get_or_create_client(
         session=session,
@@ -519,13 +522,14 @@ async def handle_client_message(message: types.Message, session):
         channel_user_id=str(message.from_user.id),
         name=message.from_user.full_name,
         username=message.from_user.username,
+        hotel_id=hotel_id,
     )
 
     # 2. Найти активный диалог или создать новый
     conversation = await get_active_conversation(session, client.id)
     is_new_conversation = conversation is None
     if not conversation:
-        conversation = await create_conversation(session, client.id)
+        conversation = await create_conversation(session, client.id, hotel_id=hotel_id)
 
     # 3. Сохранить сообщение клиента
     await save_message(
@@ -578,7 +582,7 @@ async def handle_client_message(message: types.Message, session):
 
     # KB используем только для первых сообщений — в середине диалога AI лучше справится с контекстом
     if msg_count <= 2:
-        knowledge_entry = await search_knowledge_base(session, message.text)
+        knowledge_entry = await search_knowledge_base(session, message.text, hotel_id=hotel_id)
         if knowledge_entry:
             knowledge_hint = f"Вопрос: {knowledge_entry.question}\nОтвет: {knowledge_entry.answer}"
             logger.info(f"KB hint (id={knowledge_entry.id}): '{knowledge_entry.question[:60]}'")
@@ -597,12 +601,12 @@ async def handle_client_message(message: types.Message, session):
     notes_text = None
     if client.phone:
         from app.services.notes import get_notes_for_phone
-        manager_notes_list = await get_notes_for_phone(session, client.phone)
+        manager_notes_list = await get_notes_for_phone(session, client.phone, hotel_id=hotel_id)
         notes_text = "\n".join(
             f"[{n.created_at.strftime('%d.%m')}] {n.text}" for n in manager_notes_list
         ) if manager_notes_list else None
 
-    response_text = await generate_response(history, previous_context, knowledge_hint, manager_notes=notes_text)
+    response_text = await generate_response(history, previous_context, knowledge_hint, manager_notes=notes_text, hotel_id=hotel_id)
 
     # Извлекаем категорию из ответа AI или из текста клиента
     category = extract_category(response_text)

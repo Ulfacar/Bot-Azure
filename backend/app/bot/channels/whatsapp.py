@@ -259,6 +259,9 @@ async def _handle_whatsapp_message_inner(
     Реальная обработка WhatsApp сообщения (после debounce).
     """
     async with async_session() as session:
+        # 0. hotel_id (пока хардкод для single wappi profile, webhook routing добавит позже)
+        hotel_id = 1
+
         # 1. Найти или создать клиента
         client = await get_or_create_client(
             session=session,
@@ -266,13 +269,14 @@ async def _handle_whatsapp_message_inner(
             channel_user_id=phone_number,
             name=profile_name or phone_number,
             username=None,
+            hotel_id=hotel_id,
         )
 
         # 2. Найти активный диалог или создать новый
         conversation = await get_active_conversation(session, client.id)
         is_new_conversation = conversation is None
         if not conversation:
-            conversation = await create_conversation(session, client.id)
+            conversation = await create_conversation(session, client.id, hotel_id=hotel_id)
 
         # 2.1. Приветствие для нового диалога (только если просто здороваются)
         if is_new_conversation and _is_greeting(message_text):
@@ -347,7 +351,7 @@ async def _handle_whatsapp_message_inner(
                 logger.warning("Не удалось отправить прайс-картинку, fallback на AI")
 
         # 5. Ищем ответ в базе знаний
-        knowledge_entry = await search_knowledge_base(session, message_text)
+        knowledge_entry = await search_knowledge_base(session, message_text, hotel_id=hotel_id)
 
         if knowledge_entry:
             # Нашли ответ в базе знаний
@@ -364,7 +368,7 @@ async def _handle_whatsapp_message_inner(
             knowledge_hint = None
             client_msg_count = sum(1 for m in history if m.sender == MessageSender.client)
             if client_msg_count <= 2:
-                kb_result = await search_knowledge_base(session, message_text)
+                kb_result = await search_knowledge_base(session, message_text, hotel_id=hotel_id)
                 if kb_result:
                     knowledge_hint = f"Вопрос: {kb_result.question}\nОтвет: {kb_result.answer}"
 
@@ -376,12 +380,12 @@ async def _handle_whatsapp_message_inner(
 
             # Загружаем заметки менеджера для этого номера
             from app.services.notes import get_notes_for_phone
-            manager_notes_list = await get_notes_for_phone(session, phone_number)
+            manager_notes_list = await get_notes_for_phone(session, phone_number, hotel_id=hotel_id)
             notes_text = "\n".join(
                 f"[{n.created_at.strftime('%d.%m')}] {n.text}" for n in manager_notes_list
             ) if manager_notes_list else None
 
-            response_text = await generate_response(history, previous_context, knowledge_hint, manager_notes=notes_text)
+            response_text = await generate_response(history, previous_context, knowledge_hint, manager_notes=notes_text, hotel_id=hotel_id)
 
             # Извлекаем категорию из ответа AI или из текста клиента
             category = extract_category(response_text)
