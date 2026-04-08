@@ -51,26 +51,6 @@ async def health():
     return {"status": "ok"}
 
 
-# --- Админка (SPA) ---
-_STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
-
-if _STATIC_DIR.is_dir():
-    app.mount("/assets", StaticFiles(directory=_STATIC_DIR / "assets"), name="static-assets")
-
-    @app.get("/{full_path:path}")
-    async def serve_spa(request: Request, full_path: str):
-        """Отдаём index.html для всех не-API маршрутов (SPA fallback)."""
-        file = _STATIC_DIR / full_path
-        if file.is_file():
-            return FileResponse(file)
-        return FileResponse(_STATIC_DIR / "index.html")
-else:
-    @app.get("/")
-    async def root():
-        return {"status": "ok", "app": settings.app_name}
-
-
-
 @app.get("/api/status")
 async def status():
     """Статус подключений (Telegram, WhatsApp)."""
@@ -90,6 +70,26 @@ async def status():
             "webhook": "/webhook/wappi" if is_wappi_configured() else "/webhook/whatsapp",
         },
     }
+
+
+# --- Админка (SPA) ---
+_STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+
+if _STATIC_DIR.is_dir():
+    app.mount("/assets", StaticFiles(directory=_STATIC_DIR / "assets"), name="static-assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(request: Request, full_path: str):
+        """Отдаём index.html для всех не-API маршрутов (SPA fallback)."""
+        file = _STATIC_DIR / full_path
+        if file.is_file():
+            return FileResponse(file)
+        return FileResponse(_STATIC_DIR / "index.html")
+else:
+    @app.get("/")
+    async def root():
+        return {"status": "ok", "app": settings.app_name}
+
 
 
 async def auto_close_loop():
