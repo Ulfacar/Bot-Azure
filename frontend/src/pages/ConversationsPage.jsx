@@ -161,7 +161,7 @@ export default function ConversationsPage() {
             <div className="stat-label">Бот справился</div>
           </div>
           <div className="stat-card stat-operator">
-            <div className="stat-number">{stats.today.needs_operator + stats.today.operator_active}</div>
+            <div className="stat-number">{stats.today.needs_operator + stats.today.operator_active + stats.today.closed}</div>
             <div className="stat-label">Менеджер</div>
           </div>
           <div className="stat-card stat-all">
