@@ -34,7 +34,8 @@ async def get_or_create_client(
         Client.channel == channel,
         Client.channel_user_id == channel_user_id,
     )
-    if hotel_id is not None:
+    # hotel_id фильтрация только если поле есть в модели
+    if hotel_id is not None and hasattr(Client, "hotel_id"):
         query = query.where(Client.hotel_id == hotel_id)
 
     result = await session.execute(query)
@@ -48,13 +49,15 @@ async def get_or_create_client(
         await session.commit()
         return client
 
-    client = Client(
-        hotel_id=hotel_id,
+    client_kwargs = dict(
         channel=channel,
         channel_user_id=channel_user_id,
         name=name,
         username=username,
     )
+    if hotel_id is not None and hasattr(Client, "hotel_id"):
+        client_kwargs["hotel_id"] = hotel_id
+    client = Client(**client_kwargs)
     session.add(client)
     await session.commit()
     await session.refresh(client)

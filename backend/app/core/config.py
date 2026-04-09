@@ -11,7 +11,7 @@ _INSECURE_SECRETS = {"change-me-in-production", "secret", ""}
 class Settings(BaseSettings):
     # Приложение
     app_name: str = "Hotel Bot"
-    debug: bool = True
+    debug: bool = False
 
     # База данных
     database_url: str = ""
