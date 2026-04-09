@@ -1329,51 +1329,223 @@ body {
 
 /* --- Responsive --- */
 
+/* Кнопка сайдбара клиента (скрыта на десктопе) */
+.client-sidebar-toggle {
+  display: none;
+  background: #6c5ce7;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* Гамбургер-кнопка (скрыта на десктопе) */
+.sidebar-toggle {
+  display: none;
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 1100;
+  background: #1a1a2e;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  width: 40px;
+  height: 40px;
+  font-size: 20px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+/* Overlay для мобильного меню */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 999;
+}
+.sidebar-overlay.active {
+  display: block;
+}
+
+/* === ПЛАНШЕТЫ (768px) === */
 @media (max-width: 768px) {
+  .sidebar-toggle {
+    display: flex;
+  }
+
   .sidebar {
-    width: 60px;
-    min-width: 60px;
+    position: fixed;
+    left: -260px;
+    top: 0;
+    height: 100vh;
+    z-index: 1000;
+    transition: left 0.25s ease;
+    width: 240px;
+    min-width: 240px;
   }
-
-  .sidebar-title,
-  .sidebar-link span {
-    display: none;
-  }
-
-  .sidebar-brand {
-    justify-content: center;
-    padding: 16px 8px;
-  }
-
-  .sidebar-link {
-    justify-content: center;
-    padding: 10px;
-  }
-
-  .sidebar-badge {
-    position: absolute;
-    top: 2px;
-    right: 2px;
-    margin: 0;
-  }
-
-  .sidebar-nav .sidebar-link {
-    position: relative;
+  .sidebar.open {
+    left: 0;
   }
 
   .main-content {
     padding: 16px;
+    padding-top: 60px; /* место для гамбургера */
+    margin-left: 0;
   }
 
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 
+  /* Чат: сайдбар клиента — overlay drawer справа */
   .client-sidebar {
-    display: none;
+    position: fixed;
+    right: -280px;
+    top: 0;
+    height: 100vh;
+    width: 280px;
+    min-width: 280px;
+    z-index: 900;
+    background: #fff;
+    box-shadow: -4px 0 16px rgba(0,0,0,0.1);
+    transition: right 0.25s ease;
+    overflow-y: auto;
+    padding: 16px;
+  }
+  .client-sidebar.open {
+    right: 0;
   }
 
   .chat-actions {
     flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* Кнопка для открытия сайдбара клиента */
+  .client-sidebar-toggle {
+    display: inline-flex;
+  }
+
+  .page-header {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .page-header h1 {
+    font-size: 20px;
+  }
+
+  /* KB: карточки в колонку */
+  .knowledge-entry {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .knowledge-entry-actions {
+    margin-top: 8px;
+  }
+}
+
+/* === ТЕЛЕФОНЫ (480px) === */
+@media (max-width: 480px) {
+  .main-content {
+    padding: 10px;
+    padding-top: 56px;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .stat-card {
+    padding: 12px;
+  }
+
+  .stat-value {
+    font-size: 20px;
+  }
+
+  .stat-label {
+    font-size: 11px;
+  }
+
+  .page-header h1 {
+    font-size: 18px;
+  }
+
+  /* Фильтры в столбик */
+  .filters {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .filter-btn {
+    width: 100%;
+    text-align: center;
+  }
+
+  /* Чат — сообщения шире */
+  .message {
+    max-width: 90%;
+  }
+
+  .chat-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .chat-actions {
+    width: 100%;
+  }
+
+  .chat-actions button {
+    flex: 1;
+    font-size: 11px;
+    padding: 6px 4px;
+  }
+
+  /* Шаблоны — мельче */
+  .quick-templates {
+    gap: 4px;
+  }
+  .quick-templates button {
+    font-size: 11px;
+    padding: 4px 8px;
+  }
+
+  /* Ввод сообщения */
+  .message-form input {
+    font-size: 14px;
+  }
+
+  /* KB */
+  .knowledge-page {
+    padding: 0;
+  }
+
+  .knowledge-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  /* Диалоги — карточки компактнее */
+  .conversation-card {
+    padding: 10px;
+  }
+
+  .conversation-card .conv-name {
+    font-size: 14px;
+  }
+
+  .conversation-card .conv-preview {
+    font-size: 12px;
   }
 }

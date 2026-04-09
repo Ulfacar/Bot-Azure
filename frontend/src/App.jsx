@@ -48,12 +48,18 @@ function playNotificationSound() {
 
 export default function App() {
   const [needsOperatorCount, setNeedsOperatorCount] = useState(0);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const prevCountRef = useRef(0);
   const navigate = useNavigate();
   const location = useLocation();
 
   const isLoginPage = location.pathname === "/login";
   const isLoggedIn = !!localStorage.getItem("token");
+
+  // Закрываем sidebar при навигации
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [location.pathname]);
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -92,7 +98,15 @@ export default function App() {
   return (
     <div className="app-layout">
       {isLoggedIn && (
-        <aside className="sidebar">
+        <>
+          <button className="sidebar-toggle" onClick={() => setSidebarOpen(!sidebarOpen)}>
+            {sidebarOpen ? "✕" : "☰"}
+          </button>
+          {sidebarOpen && <div className="sidebar-overlay active" onClick={() => setSidebarOpen(false)} />}
+        </>
+      )}
+      {isLoggedIn && (
+        <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
           <div className="sidebar-brand" onClick={() => navigate("/")}>
             <div className="sidebar-logo">TA</div>
             <span className="sidebar-title">Ton Azure</span>

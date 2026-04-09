@@ -83,6 +83,7 @@ export default function ChatPage() {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [clientConversations, setClientConversations] = useState([]);
+  const [clientSidebarOpen, setClientSidebarOpen] = useState(false);
   const [showTrainModal, setShowTrainModal] = useState(false);
   const [trainQuestion, setTrainQuestion] = useState("");
   const [trainAnswer, setTrainAnswer] = useState("");
@@ -296,6 +297,9 @@ export default function ChatPage() {
           <button className="btn-train" onClick={handleOpenTrain}>
             Обучить
           </button>
+          <button className="client-sidebar-toggle" onClick={() => setClientSidebarOpen(!clientSidebarOpen)}>
+            👤 Клиент
+          </button>
         </div>
       </div>
 
@@ -347,7 +351,7 @@ export default function ChatPage() {
           )}
         </div>
 
-        <div className="client-sidebar">
+        <div className={`client-sidebar ${clientSidebarOpen ? "open" : ""}`}>
           <h3>Клиент</h3>
           <div className="client-field">
             <span className="client-label">Имя</span>
