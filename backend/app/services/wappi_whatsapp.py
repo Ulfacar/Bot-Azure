@@ -132,7 +132,11 @@ async def send_wappi_image(to: str, image_path: str, caption: str = "") -> bool:
             )
 
         if 200 <= response.status_code < 300:
-            logger.info(f"WhatsApp (wappi.pro) изображение отправлено: {response.json()}")
+            try:
+                resp_data = response.json()
+            except Exception:
+                resp_data = response.text[:200]
+            logger.info(f"WhatsApp (wappi.pro) изображение отправлено: {resp_data}")
             return True
         else:
             logger.error(f"Ошибка wappi.pro image API: {response.status_code} - {response.text}")
