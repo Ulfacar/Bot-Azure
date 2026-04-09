@@ -280,10 +280,23 @@ async def _handle_whatsapp_message_inner(
 
         # 2.1. Приветствие для нового диалога (только если просто здороваются)
         if is_new_conversation and _is_greeting(message_text):
-            greeting = (
-                "Здравствуйте! Благодарим за обращение в Тон Азур 😊\n"
-                "Чем могу помочь?"
-            )
+            from app.bot.ai.assistant import _detect_language
+            lang = _detect_language(message_text)
+            if lang == "en":
+                greeting = (
+                    "Hello! Thank you for contacting Ton Azure 😊\n"
+                    "How can I help you?"
+                )
+            elif lang == "ky":
+                greeting = (
+                    "Саламатсызбы! Тон Азурга кайрылганыңыз үчүн рахмат 😊\n"
+                    "Кандай жардам бере алам?"
+                )
+            else:
+                greeting = (
+                    "Здравствуйте! Благодарим за обращение в Тон Азур 😊\n"
+                    "Чем могу помочь?"
+                )
             await send_whatsapp_message(phone_number, greeting)
             await save_message(
                 session, conversation.id, MessageSender.bot, greeting
@@ -373,7 +386,12 @@ async def _handle_whatsapp_message_inner(
                     knowledge_hint = f"Вопрос: {kb_result.question}\nОтвет: {kb_result.answer}"
 
             # Проверка доступности номеров через Exely PMS
-            all_messages = history + ([type('M', (), {'text': message_text, 'sender': MessageSender.client})()] if not any(m.text == message_text for m in history) else [])
+            # Добавляем текущее сообщение если его ещё нет в истории
+            if not any(m.text == message_text for m in history):
+                stub = Message(text=message_text, sender=MessageSender.client)
+                all_messages = history + [stub]
+            else:
+                all_messages = history
             availability_text = await check_and_format_availability(all_messages)
             if availability_text:
                 knowledge_hint = (knowledge_hint or "") + f"\n\n=== ДАННЫЕ ИЗ СИСТЕМЫ БРОНИРОВАНИЯ ===\n{availability_text}\n=== ИСПОЛЬЗУЙ ЭТИ ДАННЫЕ В ОТВЕТЕ ==="

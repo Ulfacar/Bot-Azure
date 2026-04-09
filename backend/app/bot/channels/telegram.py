@@ -135,10 +135,20 @@ async def handle_start(message: types.Message):
             username=message.from_user.username,
         )
 
-    await message.answer(
-        "Здравствуйте! Благодарим за обращение в Тон Азур 😊\n"
-        "Чем могу помочь?"
-    )
+    # Определяем язык по имени пользователя (для /start нет текста)
+    from app.bot.ai.assistant import _detect_language
+    user_name = message.from_user.full_name or ""
+    lang = _detect_language(user_name)
+    if lang == "en":
+        await message.answer(
+            "Hello! Thank you for contacting Ton Azure 😊\n"
+            "How can I help you?"
+        )
+    else:
+        await message.answer(
+            "Здравствуйте! Благодарим за обращение в Тон Азур 😊\n"
+            "Чем могу помочь?"
+        )
 
 
 @router.callback_query(F.data.startswith("reply:"))
